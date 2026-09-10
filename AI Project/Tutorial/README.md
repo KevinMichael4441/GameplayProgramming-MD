@@ -1,4 +1,3 @@
-````markdown
 # Drawing a Circle in Raylib (C)
 
 A minimal example of how to draw a circle using [Raylib](https://www.raylib.com/) in C.
@@ -147,4 +146,3 @@ DrawCircleV(center, pulse, MAROON);
 ## License
 
 This example is public domain (Unlicense). Do whatever you want with it.
-````
