@@ -1,26 +1,33 @@
 #include "raylib.h"
 #include "game.h"
 
-int main(void)
-{
-    InitWindow(1280, 720, "Test Game");
+int main(void) {
+    // Initialize window
+    InitWindow(800, 600, "Simple Platformer");
     SetTargetFPS(60);
 
-    Game game = Game_Create();
+    // Initialize game
+    Game game;
+    InitGame(&game);
 
-    while (!WindowShouldClose())
-    {
-        Game_Update(&game);
+    // Main game loop
+    while (!WindowShouldClose()) {
+        float deltaTime = GetFrameTime();
 
+        // Update
+        UpdateGame(&game, deltaTime);
+
+        // Draw
         BeginDrawing();
+        ClearBackground(SKYBLUE);
 
-        ClearBackground(RAYWHITE);
-
-        Game_Draw(&game);
+        DrawGame(&game);
 
         EndDrawing();
     }
 
+    // Cleanup
+    CleanupGame(&game);
     CloseWindow();
 
     return 0;

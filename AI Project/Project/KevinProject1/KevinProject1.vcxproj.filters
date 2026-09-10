@@ -21,9 +21,21 @@
     <ClCompile Include="game.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="player.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="level.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="game.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="player.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="level.h">
       <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>

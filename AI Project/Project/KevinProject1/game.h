@@ -2,21 +2,21 @@
 #define GAME_H
 
 #include "raylib.h"
+#include "player.h"
+#include "level.h"
 
-typedef struct
-{
-    Vector2 position;
-    float speed;
-} Player;
+#define MAX_PLATFORMS 20
 
-typedef struct
-{
+typedef struct Game {
     Player player;
+    Level level;
+    Camera2D camera;
+    bool gameWon;
 } Game;
 
-Game Game_Create(void);
-void Game_Update(Game* game);
-void Game_Draw(const Game* game);
+void InitGame(Game* game);
+void UpdateGame(Game* game, float deltaTime);
+void DrawGame(Game* game);
+void CleanupGame(Game* game);
 
 #endif
-

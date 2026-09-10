@@ -1,3 +1,5 @@
 9:00 - 9:30 Setting up Raylib, Visual Studio and GitHub.
 9:30 - 9:50 Creating Raylib Template with help of chatGPT and understanding the code.
 
+
+9:50 - 11:00 Restarted all over again using DeepSeek and also started the tutorial
