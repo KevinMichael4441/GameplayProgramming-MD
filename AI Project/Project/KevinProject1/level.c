@@ -5,82 +5,136 @@ void InitLevel(Level* level) {
     level->platformCount = 0;
     level->backgroundColor = SKYBLUE;
 
-    // Ground
-    level->platforms[level->platformCount++] = (Rectangle){ 0, 550, 2000, 50 };
+    // Platforms arranged left to right by x-coordinate
+    // When two platforms share the same x, the top one comes first
 
-    // Platforms
-    level->platforms[level->platformCount++] = (Rectangle){ 200, 450, 100, 20 };
-    level->platforms[level->platformCount++] = (Rectangle){ 350, 350, 100, 20 };
-    level->platforms[level->platformCount++] = (Rectangle){ 500, 250, 100, 20 };
-    level->platforms[level->platformCount++] = (Rectangle){ 650, 350, 100, 20 };
-    level->platforms[level->platformCount++] = (Rectangle){ 800, 450, 100, 20 };
-    level->platforms[level->platformCount++] = (Rectangle){ 950, 350, 100, 20 };
-    level->platforms[level->platformCount++] = (Rectangle){ 1100, 250, 100, 20 };
-    level->platforms[level->platformCount++] = (Rectangle){ 1250, 300, 100, 20 };
-    level->platforms[level->platformCount++] = (Rectangle){ 1400, 400, 100, 20 };
-    level->platforms[level->platformCount++] = (Rectangle){ 1550, 300, 100, 20 };
-    level->platforms[level->platformCount++] = (Rectangle){ 1700, 200, 100, 20 };
+    // Ground segments (left to right)
+    // Main ground - first section
+    level->platforms[level->platformCount++] = (Rectangle){ 0, 550, 400, 50 };
+    // Ground gap (pit) between 400 and 550
+    // Ground - second section
+    level->platforms[level->platformCount++] = (Rectangle){ 550, 550, 300, 50 };
+    // Ground gap (pit) between 850 and 1000
+    // Ground - third section
+    level->platforms[level->platformCount++] = (Rectangle){ 1000, 550, 350, 50 };
+    // Ground gap (pit) between 1350 and 1500
+    // Ground - fourth section
+    level->platforms[level->platformCount++] = (Rectangle){ 1500, 550, 500, 50 };
 
-    // Walls
+    // Left section platforms (x = 100 to 400)
+    // Wall at x=300 (tall, appears after ground)
     level->platforms[level->platformCount++] = (Rectangle){ 300, 400, 20, 150 };
-    level->platforms[level->platformCount++] = (Rectangle){ 750, 300, 20, 150 };
-    level->platforms[level->platformCount++] = (Rectangle){ 1200, 350, 20, 200 };
+    // Platform above wall area
+    level->platforms[level->platformCount++] = (Rectangle){ 150, 420, 100, 20 };
+    // Higher platform
+    level->platforms[level->platformCount++] = (Rectangle){ 320, 320, 100, 20 };
 
-    // Goal platform
-    level->platforms[level->platformCount++] = (Rectangle){ 1800, 550, 200, 50 };
+    // Middle-left section (x = 450 to 800)
+    // Platform before the pit
+    level->platforms[level->platformCount++] = (Rectangle){ 450, 430, 100, 20 };
+    // Platform over the pit
+    level->platforms[level->platformCount++] = (Rectangle){ 580, 400, 100, 20 };
+    // Platform stepping up
+    level->platforms[level->platformCount++] = (Rectangle){ 700, 320, 100, 20 };
+    // Wall at x=750
+    level->platforms[level->platformCount++] = (Rectangle){ 750, 200, 20, 150 };
+    // High platform above wall
+    level->platforms[level->platformCount++] = (Rectangle){ 770, 180, 100, 20 };
+
+    // Middle section (x = 850 to 1200)
+    // Platform over second pit
+    level->platforms[level->platformCount++] = (Rectangle){ 880, 430, 120, 20 };
+    // Stepping platform
+    level->platforms[level->platformCount++] = (Rectangle){ 1020, 350, 100, 20 };
+    // Wall at x=1150
+    level->platforms[level->platformCount++] = (Rectangle){ 1150, 300, 20, 200 };
+    // High platform near wall
+    level->platforms[level->platformCount++] = (Rectangle){ 1050, 200, 100, 20 };
+
+    // Middle-right section (x = 1250 to 1550)
+    // Platform after second pit
+    level->platforms[level->platformCount++] = (Rectangle){ 1250, 420, 100, 20 };
+    // Stepping up platform
+    level->platforms[level->platformCount++] = (Rectangle){ 1380, 340, 100, 20 };
+    // Platform over third pit
+    level->platforms[level->platformCount++] = (Rectangle){ 1520, 400, 100, 20 };
+
+    // Right section (x = 1600 to 2000)
+    // Platform leading to goal
+    level->platforms[level->platformCount++] = (Rectangle){ 1650, 450, 120, 20 };
+    // High platform (bonus)
+    level->platforms[level->platformCount++] = (Rectangle){ 1750, 300, 100, 20 };
+    // Final platform before goal
+    level->platforms[level->platformCount++] = (Rectangle){ 1850, 480, 150, 20 };
 
     // Goal (flag)
-    level->goal = (Rectangle){ 1900, 500, 20, 50 };
+    level->goal = (Rectangle){ 1920, 430, 20, 50 };
 
-    // Initialize coins
+    // Initialize coins - placed along the path
     level->coinCount = 0;
-    level->coins[level->coinCount++] = (Coin){ { 230, 400 }, false, 0 };
-    level->coins[level->coinCount++] = (Coin){ { 380, 300 }, false, 0 };
-    level->coins[level->coinCount++] = (Coin){ { 530, 200 }, false, 0 };
-    level->coins[level->coinCount++] = (Coin){ { 680, 300 }, false, 0 };
-    level->coins[level->coinCount++] = (Coin){ { 830, 400 }, false, 0 };
-    level->coins[level->coinCount++] = (Coin){ { 980, 300 }, false, 0 };
-    level->coins[level->coinCount++] = (Coin){ { 1130, 200 }, false, 0 };
-    level->coins[level->coinCount++] = (Coin){ { 1280, 250 }, false, 0 };
-    level->coins[level->coinCount++] = (Coin){ { 1430, 350 }, false, 0 };
-    level->coins[level->coinCount++] = (Coin){ { 1580, 250 }, false, 0 };
-    level->coins[level->coinCount++] = (Coin){ { 1730, 150 }, false, 0 };
+    // Left section coins
+    level->coins[level->coinCount++] = (Coin){ { 200, 380 }, false, 0 };
+    level->coins[level->coinCount++] = (Coin){ { 370, 280 }, false, 0 };
+    // Middle-left coins
+    level->coins[level->coinCount++] = (Coin){ { 500, 390 }, false, 0 };
+    level->coins[level->coinCount++] = (Coin){ { 630, 360 }, false, 0 };
+    level->coins[level->coinCount++] = (Coin){ { 750, 280 }, false, 0 };
+    level->coins[level->coinCount++] = (Coin){ { 820, 140 }, false, 0 };
+    // Middle coins
+    level->coins[level->coinCount++] = (Coin){ { 940, 390 }, false, 0 };
+    level->coins[level->coinCount++] = (Coin){ { 1070, 310 }, false, 0 };
+    level->coins[level->coinCount++] = (Coin){ { 1100, 160 }, false, 0 };
+    // Middle-right coins
+    level->coins[level->coinCount++] = (Coin){ { 1300, 380 }, false, 0 };
+    level->coins[level->coinCount++] = (Coin){ { 1430, 300 }, false, 0 };
+    level->coins[level->coinCount++] = (Coin){ { 1570, 360 }, false, 0 };
+    // Right section coins
+    level->coins[level->coinCount++] = (Coin){ { 1710, 410 }, false, 0 };
+    level->coins[level->coinCount++] = (Coin){ { 1800, 260 }, false, 0 };
+    level->coins[level->coinCount++] = (Coin){ { 1900, 440 }, false, 0 };
 
-    // Initialize enemies
+    // Initialize enemies - placed to create challenge
     level->enemyCount = 0;
 
-    // Ground enemy
+    // Ground enemy in first section
     level->enemies[level->enemyCount] = (Enemy){
-        { 400, 520 }, { 0, 0 }, { 400, 520, 30, 30 },
-        350, 550, 100.0f, true, PURPLE
+        { 200, 520 }, { 0, 0 }, { 200, 520, 30, 30 },
+        150, 350, 100.0f, true, PURPLE
     };
     level->enemyCount++;
 
-    // Platform enemy
+    // Enemy on wall-top platform
     level->enemies[level->enemyCount] = (Enemy){
-        { 820, 420 }, { 0, 0 }, { 820, 420, 30, 30 },
-        800, 870, 80.0f, true, PURPLE
+        { 780, 150 }, { 0, 0 }, { 780, 150, 30, 30 },
+        770, 840, 60.0f, true, PURPLE
     };
     level->enemyCount++;
 
-    // Ground enemy 2
+    // Ground enemy in second section
     level->enemies[level->enemyCount] = (Enemy){
-        { 1000, 520 }, { 0, 0 }, { 1000, 520, 30, 30 },
-        950, 1150, 120.0f, true, PURPLE
+        { 650, 520 }, { 0, 0 }, { 650, 520, 30, 30 },
+        550, 850, 120.0f, true, PURPLE
     };
     level->enemyCount++;
 
-    // Platform enemy 2
+    // Enemy on middle platform
     level->enemies[level->enemyCount] = (Enemy){
-        { 1420, 370 }, { 0, 0 }, { 1420, 370, 30, 30 },
-        1400, 1470, 70.0f, true, PURPLE
+        { 1260, 390 }, { 0, 0 }, { 1260, 390, 30, 30 },
+        1250, 1320, 70.0f, true, PURPLE
     };
     level->enemyCount++;
 
-    // Goal area enemy
+    // Ground enemy in fourth section
     level->enemies[level->enemyCount] = (Enemy){
-        { 1750, 520 }, { 0, 0 }, { 1750, 520, 30, 30 },
-        1700, 1850, 90.0f, false, PURPLE
+        { 1600, 520 }, { 0, 0 }, { 1600, 520, 30, 30 },
+        1500, 1850, 110.0f, true, PURPLE
+    };
+    level->enemyCount++;
+
+    // Enemy on high platform
+    level->enemies[level->enemyCount] = (Enemy){
+        { 1760, 270 }, { 0, 0 }, { 1760, 270, 30, 30 },
+        1750, 1820, 60.0f, false, PURPLE
     };
     level->enemyCount++;
 }
@@ -186,4 +240,8 @@ void DrawLevel(Level* level) {
     DrawCircle(1200, 120, 30, WHITE);
     DrawCircle(1230, 120, 40, WHITE);
     DrawCircle(1260, 120, 30, WHITE);
+
+    DrawCircle(1800, 100, 25, WHITE);
+    DrawCircle(1825, 100, 35, WHITE);
+    DrawCircle(1850, 100, 25, WHITE);
 }

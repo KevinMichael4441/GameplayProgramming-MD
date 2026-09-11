@@ -5,8 +5,6 @@
 #include "player.h"
 #include "level.h"
 
-#define MAX_PLATFORMS 20
-
 typedef struct Game {
     Player player;
     Level level;

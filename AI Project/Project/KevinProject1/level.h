@@ -3,7 +3,7 @@
 
 #include "raylib.h"
 
-#define MAX_PLATFORMS 20
+#define MAX_PLATFORMS 32
 #define MAX_COINS 50
 #define MAX_ENEMIES 10
 
