@@ -12,6 +12,11 @@ typedef struct Game {
     Level level;
     Camera2D camera;
     bool gameWon;
+    bool gameOver;
+    int score;
+    float jumpscareTimer;
+    float deathTimer;
+    Vector2 deathPosition;
 } Game;
 
 void InitGame(Game* game);

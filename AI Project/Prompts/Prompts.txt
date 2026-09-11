@@ -1,2 +1,20 @@
 gimme template for raylib game in C
 
+What is the significance of . in player_create .position, .velocity, etc
+
+move main to main.c and game logic to game.c and game.h
+
+now it doesn't move. make it very simple. just a circle that moves
+
+
+(Switched to Deepseek and started over)
+
+
+Create a README.md file about drawing a circle in Raylib in C
+
+A copyable sequence of text that I can paste into a readme file
+
+
+
+
+
