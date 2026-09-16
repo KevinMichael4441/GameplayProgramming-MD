@@ -6,7 +6,8 @@
 #include "level.h"
 
 typedef struct Game {
-    Player player;
+    Player player;    // Player 1 (arrow keys, red)
+    Player player2;   // Player 2 (WASD, blue)
     Level level;
     Camera2D camera;
     bool gameWon;

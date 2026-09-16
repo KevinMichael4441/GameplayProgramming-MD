@@ -28,3 +28,6 @@ move the u died and press r to restart text up. Also only let it appear 2/3 seco
 
 Aight, make the enemies move randomly and collide with the world. Also make sure they don't fall off
 change the press R to restart button to orange and increase player jump height
+create 4 more levels
+Make all levels into one big level
+There is a world border in between, let player go from start all the way to end
