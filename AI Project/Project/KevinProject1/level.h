@@ -17,10 +17,12 @@ typedef struct Enemy {
     Vector2 position;
     Vector2 velocity;
     Rectangle rec;
-    float patrolStart;
-    float patrolEnd;
     float speed;
-    bool movingRight;
+    float moveSpeed;        // horizontal speed magnitude
+    int direction;          // -1 = left, +1 = right
+    float directionTimer;   // time until next possible direction change
+    float gravity;          // for settling onto platforms
+    bool onGround;          // whether currently standing on something
     Color color;
 } Enemy;
 

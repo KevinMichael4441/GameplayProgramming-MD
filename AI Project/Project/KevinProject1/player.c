@@ -6,7 +6,7 @@ void InitPlayer(Player* player, float x, float y) {
     player->rec = (Rectangle){ x, y, 30, 30 };
     player->isJumping = false;
     player->canJump = true;
-    player->jumpForce = -400.0f;
+    player->jumpForce = -600.0f;
     player->moveSpeed = 200.0f;
     player->gravity = 980.0f;
     player->color = RED;

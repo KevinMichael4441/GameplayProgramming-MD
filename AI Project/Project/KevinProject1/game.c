@@ -1,15 +1,12 @@
 #include "game.h"
 #include <stdio.h>
 #include <math.h>
+#include <stdlib.h>
 
 void InitGame(Game* game) {
-    // Initialize player
     InitPlayer(&game->player, 100, 400);
-
-    // Initialize level
     InitLevel(&game->level);
 
-    // Initialize camera
     game->camera.target = (Vector2){ game->player.position.x, game->player.position.y };
     game->camera.offset = (Vector2){ GetScreenWidth() / 2.0f, GetScreenHeight() / 2.0f };
     game->camera.rotation = 0.0f;
@@ -23,23 +20,127 @@ void InitGame(Game* game) {
     game->deathPosition = (Vector2){ 0, 0 };
 }
 
+// Checks whether there is a solid platform directly beneath a given rectangle,
+// used to stop enemies from walking off ledges.
+static bool IsGroundBelow(Level* level, Rectangle rec) {
+    // Probe a thin strip just below the enemy's feet
+    Rectangle probe = {
+        rec.x + 2,
+        rec.y + rec.height,
+        rec.width - 4,
+        4
+    };
+    for (int i = 0; i < level->platformCount; i++) {
+        if (CheckCollisionRecs(probe, level->platforms[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Checks whether moving the enemy by (dx, dy) would collide with a wall/platform
+static bool WouldCollide(Level* level, Rectangle rec, float dx, float dy) {
+    Rectangle moved = { rec.x + dx, rec.y + dy, rec.width, rec.height };
+    for (int i = 0; i < level->platformCount; i++) {
+        if (CheckCollisionRecs(moved, level->platforms[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void UpdateEnemy(Enemy* enemy, Level* level, float deltaTime) {
+    // Tick down the direction-change timer; when it hits zero, randomly
+    // pick a new direction and reset the timer to a random duration.
+    enemy->directionTimer -= deltaTime;
+    if (enemy->directionTimer <= 0.0f) {
+        // 25% chance to flip direction, otherwise keep going
+        if ((rand() % 100) < 25) {
+            enemy->direction = -enemy->direction;
+        }
+        // Random time between 0.5 and 2.0 seconds until next decision
+        enemy->directionTimer = 0.5f + (float)(rand() % 150) / 100.0f;
+    }
+
+    // Horizontal movement attempt
+    float dx = enemy->direction * enemy->moveSpeed * deltaTime;
+
+    // Don't walk off a ledge: if the tile ahead has no ground below it,
+    // turn around instead of stepping into the air.
+    Rectangle ahead = {
+        enemy->rec.x + (enemy->direction > 0 ? enemy->rec.width : -4),
+        enemy->rec.y,
+        4,
+        enemy->rec.height
+    };
+    bool groundAhead = IsGroundBelow(level, ahead);
+    if (enemy->onGround && !groundAhead) {
+        enemy->direction = -enemy->direction;
+        dx = enemy->direction * enemy->moveSpeed * deltaTime;
+        enemy->directionTimer = 0.5f + (float)(rand() % 150) / 100.0f;
+    }
+
+    // Apply horizontal movement with wall collision
+    if (!WouldCollide(level, enemy->rec, dx, 0)) {
+        enemy->position.x += dx;
+    }
+    else {
+        // Hit a wall - turn around
+        enemy->direction = -enemy->direction;
+        enemy->directionTimer = 0.5f + (float)(rand() % 150) / 100.0f;
+    }
+
+    // Apply gravity
+    enemy->velocity.y += enemy->gravity * deltaTime;
+    float dy = enemy->velocity.y * deltaTime;
+
+    // Vertical movement with platform collision
+    enemy->onGround = false;
+    if (!WouldCollide(level, enemy->rec, 0, dy)) {
+        enemy->position.y += dy;
+    }
+    else {
+        // Hit something vertically
+        if (dy > 0) {
+            // Falling - snap to top of platform
+            enemy->onGround = true;
+        }
+        enemy->velocity.y = 0;
+
+        // Resolve the snap precisely by scanning for the platform we hit
+        Rectangle moved = { enemy->rec.x, enemy->rec.y + dy, enemy->rec.width, enemy->rec.height };
+        for (int i = 0; i < level->platformCount; i++) {
+            if (CheckCollisionRecs(moved, level->platforms[i])) {
+                if (dy > 0) {
+                    enemy->position.y = level->platforms[i].y - enemy->rec.height;
+                }
+                else {
+                    enemy->position.y = level->platforms[i].y + level->platforms[i].height;
+                }
+                break;
+            }
+        }
+    }
+
+    // Keep the rec in sync with position
+    enemy->rec.x = enemy->position.x;
+    enemy->rec.y = enemy->position.y;
+}
+
 void UpdateGame(Game* game, float deltaTime) {
     if (!game->gameWon && !game->gameOver) {
-        // Update player
         UpdatePlayer(&game->player, &game->level, deltaTime);
 
-        // Update camera to follow player
         game->camera.target = (Vector2){
             game->player.position.x,
             game->player.position.y - 50
         };
 
-        // Update coins rotation and check collection
+        // Coins
         for (int i = 0; i < game->level.coinCount; i++) {
             Coin* coin = &game->level.coins[i];
             if (!coin->collected) {
                 coin->rotation += deltaTime * 3.0f;
-
                 Rectangle coinRec = {
                     coin->position.x - 10,
                     coin->position.y - 10,
@@ -52,26 +153,11 @@ void UpdateGame(Game* game, float deltaTime) {
             }
         }
 
-        // Update enemies
+        // Enemies
         for (int i = 0; i < game->level.enemyCount; i++) {
             Enemy* enemy = &game->level.enemies[i];
+            UpdateEnemy(enemy, &game->level, deltaTime);
 
-            if (enemy->movingRight) {
-                enemy->position.x += enemy->speed * deltaTime;
-                if (enemy->position.x >= enemy->patrolEnd) {
-                    enemy->movingRight = false;
-                }
-            }
-            else {
-                enemy->position.x -= enemy->speed * deltaTime;
-                if (enemy->position.x <= enemy->patrolStart) {
-                    enemy->movingRight = true;
-                }
-            }
-            enemy->rec.x = enemy->position.x;
-            enemy->rec.y = enemy->position.y;
-
-            // Check collision with player
             if (CheckCollisionRecs(game->player.rec, enemy->rec)) {
                 game->gameOver = true;
                 game->deathPosition = game->player.position;
@@ -80,12 +166,12 @@ void UpdateGame(Game* game, float deltaTime) {
             }
         }
 
-        // Check win condition
+        // Win
         if (CheckCollisionRecs(game->player.rec, game->level.goal)) {
             game->gameWon = true;
         }
 
-        // Check if player fell off the world
+        // Fall off world
         if (game->player.position.y > 800) {
             game->gameOver = true;
             game->deathPosition = game->player.position;
@@ -112,7 +198,6 @@ void DrawJumpscare(Game* game) {
     float screenW = GetScreenWidth();
     float screenH = GetScreenHeight();
 
-    // Flash effect
     if ((int)(game->jumpscareTimer * 10) % 2 == 0) {
         DrawRectangle(0, 0, screenW, screenH, (Color) { 50, 0, 0, 200 });
     }
@@ -120,7 +205,6 @@ void DrawJumpscare(Game* game) {
         DrawRectangle(0, 0, screenW, screenH, (Color) { 0, 0, 0, 200 });
     }
 
-    // Draw creepy face
     float faceX = screenW / 2;
     float faceY = screenH / 2;
     float faceScale = 1.0f + game->jumpscareTimer * 2.0f;
@@ -181,26 +265,22 @@ void DrawJumpscare(Game* game) {
         }
     }
 
-    // "YOU DIED" text - moved up
     if (game->jumpscareTimer > 1.0f) {
         const char* diedText = "YOU DIED";
         int textWidth = MeasureText(diedText, 60);
         DrawText(diedText,
             screenW / 2 - textWidth / 2,
-            screenH / 2 - 250,   // moved up (was screenH / 2 + 200)
+            screenH / 2 - 250,
             60, (Color) { 200, 0, 0, 255 });
     }
 
-    // "Press R to restart" - appears 2/3 of the way through the jumpscare
-    // Full jumpscare window is roughly deathTimer > 2.0f to restart,
-    // so 2/3 of that is about 1.33 seconds.
     if (game->jumpscareTimer > 1.33f) {
         const char* restartText = "Press R to restart";
         int restartWidth = MeasureText(restartText, 30);
         DrawText(restartText,
             screenW / 2 - restartWidth / 2,
-            screenH / 2 - 170,   // moved up (was screenH / 2 + 280)
-            30, (Color) {0xE2, 0x57, 0x10, 0xFF});
+            screenH / 2 - 170,
+            30, ORANGE);
     }
 }
 
@@ -217,22 +297,17 @@ void DrawGame(Game* game) {
 
     EndMode2D();
 
-    // Draw UI
     DrawText("Use ARROW KEYS or A/D to move", 10, 10, 20, DARKGRAY);
     DrawText("SPACE to jump", 10, 35, 20, DARKGRAY);
 
-    // Draw score with a solid background for readability
     const char* scoreLabel = "SCORE";
     DrawRectangle(8, 58, 180, 34, (Color) { 0, 0, 0, 120 });
     DrawRectangleLines(8, 58, 180, 34, GOLD);
 
-    // Label
     DrawText(scoreLabel, 16, 62, 20, GOLD);
 
-    // Score value - use a fixed buffer and snprintf for safety
     char scoreText[32];
     if (game->score <= 0) {
-        // Placeholder text for zero score
         snprintf(scoreText, sizeof(scoreText), "0000");
     }
     else {

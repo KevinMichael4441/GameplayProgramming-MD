@@ -12,3 +12,6 @@ Day 2 (Hour 3) :
 
 9:00 - 9:30 First update to game. Added Coins, Enemies and Game Over/Reset. Also updated tutorial.
 9:30 - 10:00 Made some updates/ minor improvements. Also updated tutorial.
+
+
+Day 3 (Hour 4-6) :

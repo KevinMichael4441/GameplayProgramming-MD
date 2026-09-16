@@ -7,6 +7,8 @@ now it doesn't move. make it very simple. just a circle that moves
 
 (Switched to Deepseek and started over)
 
+make a simple platformer raylib game with appropriate files like main.c, game.c, player.c, player.h, etc
+there is no function body for CleanupGame. Fix
 Create a README.md file about drawing a circle in Raylib in C
 A copyable sequence of text that I can paste into a readme file
 
@@ -21,6 +23,8 @@ score text is bugged, make a placeholder text for 0 score.
 move the u died and press r to restart text up. Also only let it appear 2/3 seconds after jumpscare happens (while remaining jumpscare is happening)
 
 
+(Day 3)
 
 
-
+Aight, make the enemies move randomly and collide with the world. Also make sure they don't fall off
+change the press R to restart button to orange and increase player jump height
