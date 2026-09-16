@@ -24,7 +24,7 @@ A comprehensive, from-scratch guide to drawing shapes, building characters from 
 
 You need two things before any of this code will run:
 
-- **A C compiler.** `gcc` and `clang` work on Linux and macOS. On Windows, use MinGW-w64 (the `w64devkit` bundle is the easiest path) or MSVC.
+- **A C compiler.** `gcc` and `clang` work on Linux and macOS. On Windows, use MinGW-w64 (the `w64devkit` bundle is the easiest path) or MSVC. Any C99-compatible compiler will do — Raylib uses compound literals and designated initializers in a few places, both of which are C99 features.
 - **Raylib itself**, installed and linkable from your compiler.
 
 Raylib is a single C library with no external dependencies beyond what your OS provides (OpenGL, math, threads, X11 on Linux). That's the whole point of the library — you drop it in and you're drawing pixels the same afternoon.
@@ -48,7 +48,7 @@ Download the prebuilt binaries from the [Raylib releases page](https://github.co
 
 ## Core Concepts
 
-Before writing a single line of drawing code, internalize these four ideas. Almost every beginner mistake in Raylib comes from misunderstanding one of them.
+Before writing a single line of drawing code, internalize these six ideas. Almost every beginner mistake in Raylib comes from misunderstanding one of them.
 
 ### 1. Everything happens inside a window and a loop
 
@@ -105,20 +105,15 @@ int main(void)
         BeginDrawing();
             ClearBackground(RAYWHITE);
 
-            // A filled circle at (120, 120) with radius 60
             DrawCircle(120, 120, 60, MAROON);
-            // The same circle, but with a dark outline
             DrawCircleLines(120, 120, 60, DARKGRAY);
 
-            // A rectangle at (220, 60), 120 wide and 120 tall
             DrawRectangle(220, 60, 120, 120, BLUE);
             DrawRectangleLines(220, 60, 120, 120, DARKBLUE);
 
-            // A rounded rectangle
             DrawRectangleRounded((Rectangle){ 380, 60, 120, 120 }, 0.3f, 16, GREEN);
             DrawRectangleRoundedLines((Rectangle){ 380, 60, 120, 120 }, 0.3f, 16, DARKGREEN);
 
-            // A triangle from three vertices
             DrawTriangle(
                 (Vector2){ 600, 180 },
                 (Vector2){ 540, 60  },
@@ -132,18 +127,14 @@ int main(void)
                 DARKBROWN
             );
 
-            // A regular hexagon centered at (780, 120)
             DrawPoly((Vector2){ 780, 120 }, 6, 60.0f, 0.0f, PURPLE);
             DrawPolyLines((Vector2){ 780, 120 }, 6, 60.0f, 0.0f, DARKPURPLE);
 
-            // An ellipse with radii 70 (x) and 40 (y)
             DrawEllipse(120, 320, 70, 40, SKYBLUE);
             DrawEllipseLines(120, 320, 70, 40, DARKBLUE);
 
-            // A thick line
             DrawLineEx((Vector2){ 220, 280 }, (Vector2){ 340, 360 }, 6.0f, RED);
 
-            // A ring (annulus) with inner radius 30, outer 55
             DrawRing((Vector2){ 470, 320 }, 30, 55, 0, 360, 32, GOLD);
             DrawRingLines((Vector2){ 470, 320 }, 30, 55, 0, 360, 32, DARKGRAY);
 
@@ -174,79 +165,87 @@ Once you know those three suffixes, you can guess the name of almost every shape
 
 | Function | Description |
 |----------|-------------|
-| `DrawPixel(int x, int y, Color color)` | Draws a single pixel. |
-| `DrawLine(int x1, int y1, int x2, int y2, Color color)` | Draws a 1-pixel-wide line. |
-| `DrawLineV(Vector2 start, Vector2 end, Color color)` | Same as `DrawLine` but with vectors. |
-| `DrawLineEx(Vector2 start, Vector2 end, float thick, Color color)` | Draws a thick line. |
-| `DrawLineBezier(Vector2 start, Vector2 end, float thick, Color color)` | Draws a Bezier curve between two points (3rd control point is the midpoint offset). |
+| `DrawPixel(int x, int y, Color color)` | Sets a single pixel at integer screen coordinates `(x, y)` to the given color. This is the lowest-level drawing primitive in Raylib — every other shape function eventually decomposes into many of these. Use it for manual per-pixel effects (noise, starfields, retro art) or when you need pixel-perfect placement that the higher-level functions can't express. Because each call is a separate GPU draw, avoid it inside tight loops for anything larger than a few thousand pixels — build a vertex array instead. |
+| `DrawLine(int x1, int y1, int x2, int y2, Color color)` | Draws a 1-pixel-wide straight line from `(x1, y1)` to `(x2, y2)`. The line is rasterized (as opposed to anti-aliased), so diagonal lines have a characteristic staircase look. Coordinates are integers, which is convenient when you're drawing on a grid or working with pixel-art layouts. For thicker lines or smoother appearance, use `DrawLineEx`. |
+| `DrawLineV(Vector2 start, Vector2 end, Color color)` | Identical to `DrawLine` but takes `Vector2` structs instead of four separate integers. Useful when your endpoints are already computed as vectors (e.g. from physics or intersection tests) so you avoid casting to int and back. Functionally equivalent — pick whichever signature reads better in context. |
+| `DrawLineEx(Vector2 start, Vector2 end, float thick, Color color)` | Draws a line with a specified thickness in pixels. Internally this triangulates a rectangle along the line segment, so it correctly joins at the ends (butt caps) and scales smoothly at any thickness. Use it for anything visually prominent — laser beams, cables, UI separators, character limbs. Because the endpoints are `Vector2`, sub-pixel positions are respected, which eliminates the "jitter" you get from integer lines moving one pixel at a time. |
+| `DrawLineBezier(Vector2 start, Vector2 end, float thick, Color color)` | Draws a smooth quadratic Bezier curve between two endpoints. Raylib computes the control point automatically as a point offset from the midpoint of the segment, producing a gentle arc. It's not a full Bezier editor — for precise control-point curves, build a `Vector2` array of points and use `DrawSplineBezierQuadratic` or `DrawSplineBezierCubic` with `DrawLineStrip` instead. Great for stylized paths, ropes, and bunting. |
 
 ### Circles and Arcs
 
 | Function | Description |
 |----------|-------------|
-| `DrawCircle(int cx, int cy, float radius, Color color)` | Filled circle using integer coordinates. |
-| `DrawCircleV(Vector2 center, float radius, Color color)` | Filled circle using a `Vector2`. |
-| `DrawCircleLines(int cx, int cy, float radius, Color color)` | Circle outline. |
-| `DrawCircleLinesV(Vector2 center, float radius, Color color)` | Circle outline using a `Vector2`. |
-| `DrawCircleGradient(int cx, int cy, float radius, Color inner, Color outer)` | Circle with a radial gradient from inner to outer. |
-| `DrawCircleSector(Vector2 center, float radius, float startAngle, float endAngle, int segments, Color color)` | A pie-slice (arc with fill). |
-| `DrawCircleSectorLines(...)` | Same as above, outline only. |
-| `DrawRing(Vector2 center, float innerR, float outerR, float startAngle, float endAngle, int segments, Color color)` | Ring/annulus (a donut). |
-| `DrawRingLines(...)` | Ring outline. |
+| `DrawCircle(int cx, int cy, float radius, Color color)` | Draws a filled circle centered at integer coordinates `(cx, cy)` with the given radius in pixels. The radius is a `float`, so sub-pixel sizes work, but the center is snapped to an integer — use `DrawCircleV` if you need fractional centers. This is the single most-used drawing function in Raylib; anything round uses it under the hood. |
+| `DrawCircleV(Vector2 center, float radius, Color color)` | Same filled circle, but the center is a `Vector2` and can be anywhere in continuous space. Preferred when the circle represents a moving object (a ball, a projectile, a character's head) whose position comes from floating-point physics — the circle slides smoothly instead of jumping one pixel at a time. Functionally identical to `DrawCircle` when the center happens to be integral. |
+| `DrawCircleLines(int cx, int cy, float radius, Color color)` | Draws **only the outline** of a circle at integer coordinates. The outline is one pixel wide and rasterized, so it matches the style of `DrawLine`. Common uses: debug hitboxes, wireframe rendering, selection rings around a unit, or layered circles where you want a colored rim over a filled body. |
+| `DrawCircleLinesV(Vector2 center, float radius, Color color)` | Circle outline with a `Vector2` center. Matches `DrawCircleV` for smooth motion. Use this paired with `DrawCircleV` to get a filled-and-outlined moving ball, which is the classic billiard/pong look. |
+| `DrawCircleGradient(int cx, int cy, float radius, Color inner, Color outer)` | Draws a filled circle whose color smoothly interpolates from `inner` at the center to `outer` at the rim. Produces a nice soft glow effect (light center fading to dark edge) or a "sun" gradient (yellow center to orange edge). Implemented by building a triangle fan and assigning per-vertex colors, so it renders in one GPU call — very cheap. Not to be confused with `DrawCircleSector` (a pie slice, see below). |
+| `DrawCircleSector(Vector2 center, float radius, float startAngle, float endAngle, int segments, Color color)` | Draws a **filled pie slice** — the region bounded by two radii and the arc between them. Angles are in **degrees**, measured clockwise from the positive X axis (so 0° is right, 90° is down because Y grows downward). `segments` controls how many straight triangles approximate the arc — 32 is a good default; for very large radii use 64 or more. Ideal for health/energy radial meters, pie charts, and cone-of-vision indicators on a mini-map. |
+| `DrawCircleSectorLines(...)` | The outline-only version of `DrawCircleSector`. Draws the two straight edges and the curved arc as a thin wireframe. Useful for highlighting a sector boundary — for instance showing a vision cone's extent while filling the interior with a translucent `DrawCircleSector`. |
+| `DrawRing(Vector2 center, float innerR, float outerR, float startAngle, float endAngle, int segments, Color color)` | Draws a **filled ring (annulus)** — the region between two concentric circles, optionally clipped to an arc by `startAngle`/`endAngle`. A full ring uses 0° to 360°. This is the function you want for donut shapes, cooldown timers that deplete around a circle, auras, radar sweep indicators, and rings around planets. The name is a little confusing: "Ring" here means the filled donut, and "RingLines" (below) is the outline. |
+| `DrawRingLines(...)` | Draws the **outline** of a ring — two concentric circle outlines plus, for a partial arc, the two radial edges. Same parameter list as `DrawRing`. Use it to draw a clean circle-with-hole outline without filling the annulus. |
 
 ### Rectangles
 
 | Function | Description |
 |----------|-------------|
-| `DrawRectangle(int x, int y, int w, int h, Color color)` | Filled rectangle. |
-| `DrawRectangleV(Vector2 pos, Vector2 size, Color color)` | Filled rectangle using vectors. |
-| `DrawRectangleRec(Rectangle rec, Color color)` | Filled rectangle using a `Rectangle` struct. |
-| `DrawRectangleLines(int x, int y, int w, int h, Color color)` | Rectangle outline. |
-| `DrawRectangleLinesEx(Rectangle rec, float thick, Color color)` | Rectangle outline with a given thickness. |
-| `DrawRectangleRounded(Rectangle rec, float roundness, int segments, Color color)` | Filled rounded rectangle. `roundness` is 0.0–1.0 (fraction of the shorter side). |
-| `DrawRectangleRoundedLines(Rectangle rec, float roundness, int segments, Color color)` | Rounded rectangle outline. |
-| `DrawRectangleGradientH(...)` / `DrawRectangleGradientV(...)` | Rectangles with a horizontal or vertical color gradient. |
+| `DrawRectangle(int x, int y, int w, int h, Color color)` | Draws a filled axis-aligned rectangle whose top-left corner is `(x, y)` and whose size is `w` by `h` pixels. The simplest and most efficient shape in the library. If you need a moving/rotating rectangle, this isn't it — use `DrawRectanglePro`. For a filled rectangle specified as a `Rectangle` struct (the form used by collision functions), see `DrawRectangleRec`. |
+| `DrawRectangleV(Vector2 pos, Vector2 size, Color color)` | Filled rectangle with position and size as `Vector2` values. Same as `DrawRectangle` but allows floating-point coordinates, so the rectangle can move smoothly at sub-pixel increments. Handy when the position comes from a physics simulation or a lerp. |
+| `DrawRectangleRec(Rectangle rec, Color color)` | Filled rectangle defined by a `Rectangle` struct (which contains `x`, `y`, `width`, `height`). This is the form most often used in games, because `Rectangle` is exactly what Raylib's collision helpers accept — you keep one `Rectangle` per entity, use it for both `CheckCollisionRecs` and `DrawRectangleRec`, and the visible body always matches the collision box. Strongly recommended over `DrawRectangle` for game entities. |
+| `DrawRectangleLines(int x, int y, int w, int h, Color color)` | Draws **only the outline** of an axis-aligned rectangle — four 1-pixel lines forming the border. The interior is untouched, so whatever you drew before remains visible. Perfect for debug boxes, grid cells, selection rectangles, and UI frames. Thickness is fixed at 1; use `DrawRectangleLinesEx` if you need thicker borders. |
+| `DrawRectangleLinesEx(Rectangle rec, float thick, Color color)` | Rectangle outline with a configurable thickness. The border is drawn **inside** the rectangle's bounds, so a rectangle with thickness 4 and width 100 still occupies exactly 100 pixels of space. Use this for chunky UI panels, glowing selection rings, and anything where a 1-pixel outline looks too thin. Also useful for animated borders where the thickness pulses. |
+| `DrawRectangleRounded(Rectangle rec, float roundness, int segments, Color color)` | Draws a filled rectangle with rounded corners. `roundness` is a **fraction of the shorter side** (0.0 = sharp corners, 0.5 = fully semicircular ends, 1.0 = pill/capsule shape). `segments` is how many straight edges approximate each rounded corner — 8 or 16 is typical. This is the go-to function for modern-looking UI: buttons, panels, character bodies, progress bar fills. |
+| `DrawRectangleRoundedLines(Rectangle rec, float roundness, int segments, Color color)` | The outline version of `DrawRectangleRounded`. Draws only the rounded border with 1-pixel thickness. Combine with `DrawRectangleRounded` (same parameters) for a filled button with a visible rim. Note: unlike `DrawRectangleLinesEx`, this version does not accept a thickness parameter — the border is always 1 pixel. |
+| `DrawRectangleGradientH(int x, int y, int w, int h, Color left, Color right)` | Filled rectangle with a horizontal color gradient: `left` at the left edge, `right` at the right edge, linear blend in between. Great for sunset skies, health bars that shift color across their width, or smooth fades. Because it's a single quad with two vertex colors, it's essentially free to render. |
+| `DrawRectangleGradientV(int x, int y, int w, int h, Color top, Color bottom)` | Vertical gradient version — `top` at the top edge, `bottom` at the bottom edge. Use it for sky-to-ground backgrounds, gradient fills, and vertical fade-out overlays. |
+| `DrawRectangleGradientEx(Rectangle rec, Color topLeft, Color bottomLeft, Color bottomRight, Color topRight)` | The most general form: each corner gets its own color and the interior bilinearly interpolates between them. Use this when you want a diagonal gradient or a corner highlight, not just a two-stop linear blend. |
 
 ### Triangles
 
 | Function | Description |
 |----------|-------------|
-| `DrawTriangle(Vector2 v1, Vector2 v2, Vector2 v3, Color color)` | Filled triangle. |
-| `DrawTriangleLines(Vector2 v1, Vector2 v2, Vector2 v3, Color color)` | Triangle outline. |
-| `DrawTriangleFan(Vector2 *points, int pointCount, Color color)` | A "fan" of triangles sharing a common first point — useful for custom star shapes. |
-| `DrawTriangleStrip(Vector2 *points, int pointCount, Color color)` | A strip of triangles sharing edges. |
+| `DrawTriangle(Vector2 v1, Vector2 v2, Vector2 v3, Color color)` | Draws a filled triangle defined by three vertices. Vertices are `Vector2` so sub-pixel positions are supported. This is the fundamental polygon — every other filled shape in Raylib (circles, rectangles, polygons) is ultimately decomposed into triangles and rendered through this or its underlying vertex path. |
+| `DrawTriangleLines(Vector2 v1, Vector2 v2, Vector2 v3, Color color)` | Triangle outline — three 1-pixel lines connecting the vertices. Combine with `DrawTriangle` to get a filled triangle with a visible border. Useful for wireframe debug views of a mesh, or for showing a collision triangle at runtime. |
+| `DrawTriangleFan(Vector2 *points, int pointCount, Color color)` | Draws a "fan" of triangles all sharing a common first point: `points[0]` connects to `points[1]`, `points[2]`, etc., and each adjacent pair forms one triangle. This is the classic way to build custom circular or radial shapes — for example, a hand-rolled star, a pie chart with arbitrary slices, or a mountain silhouette. The first point is the hub; the rest are the rim. |
+| `DrawTriangleStrip(Vector2 *points, int pointCount, Color color)` | Draws a strip of triangles where each pair of consecutive vertices forms a new triangle with the previous one. Used for ribbons, roads, tapered beams, and terrain surfaces. Points alternate left-right edge, so a strip of N points produces N-2 triangles. Much more efficient than emitting individual triangles when the geometry is naturally a strip. |
 
 ### Polygons
 
 | Function | Description |
 |----------|-------------|
-| `DrawPoly(Vector2 center, int sides, float radius, float rotation, Color color)` | Filled regular polygon. `sides` is the number of edges. |
-| `DrawPolyLines(Vector2 center, int sides, float radius, float rotation, Color color)` | Polygon outline. |
-| `DrawPolyLinesEx(Vector2 center, int sides, float radius, float rotation, float thick, Color color)` | Polygon outline with a chosen thickness. |
+| `DrawPoly(Vector2 center, int sides, float radius, float rotation, Color color)` | Draws a filled **regular polygon** — a polygon with all sides equal — centered at `center`, with `sides` edges, circumscribed by a circle of the given `radius`, rotated by `rotation` degrees. Common values: 3 = triangle, 4 = square (diamond when rotated 45°), 5 = pentagon, 6 = hexagon, 8 = octagon. Use this for hexagonal map tiles, UI gems, stop-signs, and stylized shapes. Rotating by 90° / sides aligns an edge to the X axis instead of a vertex. |
+| `DrawPolyLines(Vector2 center, int sides, float radius, float rotation, Color color)` | Outline-only version of `DrawPoly`, drawn with 1-pixel lines. The same parameters apply. Great for hex grids (draw all filled hexes first, then all outlines on top), wireframe icons, and boundary markers. |
+| `DrawPolyLinesEx(Vector2 center, int sides, float radius, float rotation, float thick, Color color)` | Polygon outline with a **configurable thickness**. Since thickness is applied by triangulating a border band around the perimeter, this produces a substantial visible edge even at small radii. Use it for highlighted borders, chunky icons, or when `DrawPolyLines` looks too thin at your scale. |
 
 ### Ellipses
 
 | Function | Description |
 |----------|-------------|
-| `DrawEllipse(int cx, int cy, float rx, float ry, Color color)` | Filled ellipse. `rx`/`ry` are the horizontal and vertical radii. |
-| `DrawEllipseLines(int cx, int cy, float rx, float ry, Color color)` | Ellipse outline. |
+| `DrawEllipse(int cx, int cy, float rx, float ry, Color color)` | Filled ellipse centered at `(cx, cy)`, with `rx` being the horizontal radius and `ry` the vertical radius. If `rx == ry` this is identical to a circle, but usually you'll use two different values: wide ellipses for eyes, squat ovals for shadows on the ground, elongated shapes for tanks and blimps. |
+| `DrawEllipseLines(int cx, int cy, float rx, float ry, Color color)` | Ellipse outline with 1-pixel thickness. Same parameters as `DrawEllipse`. Paired with `DrawEllipse` at the same coordinates, it gives you a filled ellipse with a visible border — the standard way to draw a soft shadow under a character. |
 
 ### Text
 
 | Function | Description |
 |----------|-------------|
-| `DrawText(const char *text, int x, int y, int fontSize, Color color)` | Draws text using the built-in font. |
-| `DrawTextEx(Font font, const char *text, Vector2 pos, float fontSize, float spacing, Color color)` | Draws text using a custom font. |
-| `MeasureText(const char *text, int fontSize)` | Returns the pixel width of the text — useful for centering. |
+| `DrawText(const char *text, int x, int y, int fontSize, Color color)` | Draws a null-terminated string starting at `(x, y)` using Raylib's built-in default font (a bitmap font loaded at startup). `fontSize` scales the glyphs; `(x, y)` is the **top-left** of the text box. Because the default font is a bitmap font, very large sizes will look blocky — for crisp text at any size, load a TTF with `LoadFontEx`. This is the workhorse for HUDs, debug readouts, and labels. |
+| `DrawTextEx(Font font, const char *text, Vector2 pos, float fontSize, float spacing, Color color)` | Draws text using a **custom font** loaded with `LoadFont` or `LoadFontEx`. The `spacing` parameter controls the extra gap between characters (0 for natural spacing, negative to tighten). Use this for stylized game fonts, title screens, or any text where the bitmap font's blocky look is unacceptable. |
+| `DrawTextRec(Font font, const char *text, Rectangle rec, float fontSize, float spacing, bool wordWrap, Color tint)` | Draws text **clipped to a rectangle**, optionally with word wrap. Essential for dialogue boxes, tooltips, and any situation where text might overflow its container. `wordWrap = true` breaks lines at word boundaries, filling the rectangle's width and stopping when it reaches the bottom. |
+| `DrawTextPro(Font font, const char *text, Vector2 position, Vector2 origin, float rotation, float fontSize, float spacing, Color tint)` | The fully-general text function: custom font, arbitrary position, origin (the point rotation is around), rotation in degrees, size, spacing, and color. Use it for floating damage numbers, rotated UI labels, or stylized title text. For most HUD work, `DrawText` or `DrawTextEx` is enough. |
+| `MeasureText(const char *text, int fontSize)` | Returns the pixel **width** that `DrawText` would use to render the string at the given size. Essential for centering text: `x = (screenW - MeasureText(s, size)) / 2`. Paired with the constant `fontSize` (or `GetFontDefault().baseSize`), you can also estimate line height for multi-line layouts. |
+| `MeasureTextEx(Font font, const char *text, float fontSize, float spacing)` | Like `MeasureText`, but for a custom font with custom spacing. Returns a `Vector2` with both width (`x`) and height (`y`), which is what you usually want for laying out panels around text. |
 
 ### Rendering Modes
 
 | Function | Description |
 |----------|-------------|
-| `BeginDrawing()` / `EndDrawing()` | Bracket the frame. Must wrap all drawing. |
-| `BeginMode2D(Camera2D camera)` / `EndMode2D()` | Bracket world-space drawing. See the camera tutorial. |
-| `BeginBlendMode(int mode)` / `EndBlendMode()` | Switch between blend modes (alpha, additive, etc.). |
-| `BeginScissorMode(int x, int y, int w, int h)` / `EndScissorMode()` | Clip drawing to a rectangle. |
+| `BeginDrawing(void)` / `EndDrawing(void)` | Bracket every frame's drawing code. `BeginDrawing` sets up the frame (clears the internal render batch, prepares the OpenGL back buffer), and `EndDrawing` flushes the batch and presents the frame to the window. Calling any `Draw*` function outside this pair silently draws into the void. **Every** frame needs exactly one `BeginDrawing`/`EndDrawing` pair, even if you draw nothing that frame. |
+| `BeginMode2D(Camera2D camera)` / `EndMode2D(void)` | Bracket drawing that should be transformed by a 2D camera. Inside the bracket, all coordinates are interpreted in **world space** — the camera's position, zoom, and rotation are applied to every draw call. Outside, coordinates are **screen space**. Nesting a `BeginMode2D` inside a `BeginDrawing` is the standard pattern for a game world with a HUD. |
+| `BeginMode3D(Camera3D camera)` / `EndMode3D(void)` | Same idea as `BeginMode2D` but for a 3D camera. If you're mixing 2D HUD elements over a 3D scene, you'll typically draw the 3D world between `BeginMode3D`/`EndMode3D`, then draw the HUD after `EndMode3D` while still inside `BeginDrawing`/`EndDrawing`. |
+| `BeginBlendMode(int mode)` / `EndBlendMode(void)` | Temporarily change how the GPU blends new pixels with existing ones. Modes include `BLEND_ALPHA` (default, respects alpha), `BLEND_ADDITIVE` (adds color — bright, glowy), `BLEND_MULTIPLIED` (darkens — good for shadows), `BLEND_ADD_COLORS`, and `BLEND_SUBTRACT_COLORS`. Use `BLEND_ADDITIVE` for laser beams, sparks, and glow effects; `BLEND_MULTIPLIED` for clouds and shadows over terrain. |
+| `BeginScissorMode(int x, int y, int w, int h)` / `EndScissorMode(void)` | Clips all subsequent drawing to the given rectangle — anything outside is discarded. This is how you build scrollable lists, minimaps, and split-screen views where each half draws a different camera view. Unlike drawing a mask, scissor mode is a hardware-level clip with no performance cost. |
+| `BeginTextureMode(RenderTexture2D target)` / `EndTextureMode(void)` | Redirects all drawing into an off-screen texture instead of the window. This is how you do post-processing: render the game to a texture, then draw that texture to the screen through a shader. Also useful for building dynamic textures (mini-map generation, procedural backgrounds). |
+| `BeginShaderMode(Shader shader)` / `EndShaderMode(void)` | Applies a custom GPU shader to everything drawn inside the bracket. Use it for outline effects, CRT curvature, palette swaps, and any per-pixel visual effect that would be too slow on the CPU. |
 
 ## Colors in Raylib
 
@@ -270,18 +269,20 @@ The `(Color){ ... }` syntax is a C **compound literal** — a way to construct a
 
 | Function | Description |
 |----------|-------------|
-| `Fade(Color color, float alpha)` | Returns the same color with a new alpha (0.0–1.0). Common for shadows, overlays, ghosting effects. |
-| `ColorAlpha(Color color, float alpha)` | Same as `Fade`. |
-| `ColorToInt(Color color)` | Packs the color into a 32-bit integer. |
-| `ColorFromHSV(float hue, float sat, float val)` | Builds a color from hue/saturation/value (HSV). |
-| `ColorNormalize(Color color)` | Returns a `Vector4` with components in 0.0–1.0. |
-| `ColorLerp(Color a, Color b, float t)` | Blends two colors by a factor t (0.0–1.0). |
+| `Fade(Color color, float alpha)` | Returns the same color with a **new alpha value** in the 0.0–1.0 range. This is the single most useful color helper in Raylib: `Fade(BLACK, 0.3f)` gives you a soft shadow, `Fade(WHITE, 0.5f)` gives you a translucent white overlay, and `Fade(RAYWHITE, 0.85f)` is the standard tint for a semi-opaque UI panel. Does not modify the input — returns a new `Color` struct. |
+| `ColorAlpha(Color color, float alpha)` | Identical in behavior to `Fade`. Both exist because `ColorAlpha` reads better when you're thinking "give me this color with alpha", while `Fade` reads better when you're thinking "make this transparent". Pick whichever feels more natural; they compile to the same thing. |
+| `ColorToInt(Color color)` | Packs the RGBA bytes into a single 32-bit integer, in the order `0xRRGGBBAA` or a platform-specific layout depending on Raylib's build. Used when interfacing with libraries or shaders that expect a packed color instead of a struct. Rarely needed in day-to-day code. |
+| `ColorFromHSV(float hue, float sat, float val)` | Builds a color from **hue / saturation / value** — a more intuitive model for color pickers and animations than RGB. `hue` is in degrees 0–360 (0 = red, 120 = green, 240 = blue), `sat` and `val` are 0.0–1.0. This is the go-to for cycling through rainbow colors over time: `ColorFromHSV(fmodf(GetTime() * 60.0f, 360.0f), 0.8f, 0.9f)`. |
+| `ColorNormalize(Color color)` | Returns a `Vector4` with each component divided by 255.0, so the components are in the range 0.0–1.0. Used when passing colors to shaders or doing floating-point color math. |
+| `ColorFromNormalized(Vector4 normalized)` | The inverse of `ColorNormalize` — takes 0.0–1.0 float components and produces a `Color` struct. Used when a shader or math library hands you normalized values and you want to draw with the result. |
+| `ColorLerp(Color a, Color b, float t)` | Linearly interpolates between two colors by factor `t` (0.0 gives `a`, 1.0 gives `b`). The workhorse for smooth color transitions — health bar fills blending from green to red as health drops, damage flashes fading back to normal, and palette cycling effects. Performs per-channel linear interpolation with no gamma correction, which is fine for most game effects. |
 
 ### Practical Color Tips
 
 - `Fade(BLACK, 0.3f)` is the standard way to draw a soft shadow.
 - `Fade(RAYWHITE, 0.85f)` is a good translucent panel background for HUDs.
 - Cycle hues with `ColorFromHSV(fmodf(GetTime() * 60.0f, 360.0f), 0.8f, 0.9f)` for rainbow animations.
+- `ColorLerp` is cheap — no reason to write your own per-channel interpolation.
 
 ## Building Characters from Shapes
 
@@ -294,13 +295,12 @@ Wrap the whole thing in one function that takes the anchor as a parameter. That 
 ```c
 void DrawCharacter(Vector2 pos)
 {
-    // Every part is drawn relative to pos.
-    DrawRectangle(pos.x - 20, pos.y - 10, 40, 50, BLUE);   // body
-    DrawCircle(pos.x - 8, pos.y + 5, 4, WHITE);            // left eye white
-    DrawCircle(pos.x + 8, pos.y + 5, 4, WHITE);            // right eye white
-    DrawCircle(pos.x - 7, pos.y + 5, 2, BLACK);            // left pupil
-    DrawCircle(pos.x + 9, pos.y + 5, 2, BLACK);            // right pupil
-    DrawLine(pos.x - 5, pos.y + 15, pos.x + 5, pos.y + 15, BLACK); // mouth
+    DrawRectangle(pos.x - 20, pos.y - 10, 40, 50, BLUE);            // body
+    DrawCircle(pos.x - 8, pos.y + 5, 4, WHITE);                     // left eye white
+    DrawCircle(pos.x + 8, pos.y + 5, 4, WHITE);                     // right eye white
+    DrawCircle(pos.x - 7, pos.y + 5, 2, BLACK);                     // left pupil
+    DrawCircle(pos.x + 9, pos.y + 5, 2, BLACK);                     // right pupil
+    DrawLine(pos.x - 5, pos.y + 15, pos.x + 5, pos.y + 15, BLACK);  // mouth
 }
 ```
 
@@ -324,18 +324,15 @@ The magic numbers in a `DrawCharacter` function are usually tuned for one specif
 ```c
 void DrawCharacter(Vector2 pos, float w, float h)
 {
-    // Body
     DrawRectangle(pos.x, pos.y, w, h, BLUE);
 
     // Eyes at 27% and 73% across, 33% down
     DrawCircle(pos.x + w * 0.27f, pos.y + h * 0.33f, w * 0.13f, WHITE);
     DrawCircle(pos.x + w * 0.73f, pos.y + h * 0.33f, w * 0.13f, WHITE);
 
-    // Pupils slightly offset toward the "front"
     DrawCircle(pos.x + w * 0.30f, pos.y + h * 0.33f, w * 0.07f, BLACK);
     DrawCircle(pos.x + w * 0.76f, pos.y + h * 0.33f, w * 0.07f, BLACK);
 
-    // Mouth at 73% down, 33% wide
     DrawRectangle(pos.x + w * 0.33f, pos.y + h * 0.73f,
                   w * 0.33f, h * 0.07f, BLACK);
 }
@@ -376,14 +373,14 @@ Everything here deals with the first category in 2D — the ones you'll use in p
 
 | Function | Signature | What it checks |
 |----------|-----------|----------------|
-| `CheckCollisionRecs` | `bool(Rectangle a, Rectangle b)` | Two axis-aligned rectangles. |
-| `CheckCollisionCircles` | `bool(Vector2 c1, float r1, Vector2 c2, float r2)` | Two circles. |
-| `CheckCollisionCircleRec` | `bool(Vector2 center, float radius, Rectangle rec)` | A circle and a rectangle. |
-| `CheckCollisionPointRec` | `bool(Vector2 point, Rectangle rec)` | A point inside a rectangle. |
-| `CheckCollisionPointCircle` | `bool(Vector2 point, Vector2 center, float radius)` | A point inside a circle. |
-| `CheckCollisionPointTriangle` | `bool(Vector2 point, Vector2 p1, Vector2 p2, Vector2 p3)` | A point inside a triangle. |
-| `CheckCollisionLines` | `bool(Vector2 p1, Vector2 p2, Vector2 p3, Vector2 p4, Vector2 *collisionPoint)` | Two line segments. |
-| `CheckCollisionCircleLine` | `bool(Vector2 center, float radius, Vector2 p1, Vector2 p2)` | A circle and a line segment. |
+| `CheckCollisionRecs` | `bool(Rectangle a, Rectangle b)` | Returns `true` if two **axis-aligned rectangles** overlap by even a single pixel. This is a simple AABB (axis-aligned bounding box) test: it compares the X ranges and Y ranges of the two rectangles and returns true only if both overlap. It is O(1), extremely fast, and the workhorse for player-vs-wall, enemy-vs-platform, and button-vs-mouse checks. It does **not** work for rotated rectangles — for those you need SAT (separating axis theorem) which Raylib doesn't provide in 2D. |
+| `CheckCollisionCircles` | `bool(Vector2 c1, float r1, Vector2 c2, float r2)` | Returns `true` if two **circles** intersect or touch. Implementation: compares the distance between centers against `r1 + r2`; if less than or equal, they collide. O(1) with one square root (or, in optimized builds, a squared-distance comparison with no sqrt at all). Ideal for ball-vs-ball, projectile-vs-target, and any shape that's naturally round — bubbles, planets, pickups. Because it's radial, it's rotation-invariant and looks natural for rolling objects. |
+| `CheckCollisionCircleRec` | `bool(Vector2 center, float radius, Rectangle rec)` | Returns `true` if a **circle** intersects an **axis-aligned rectangle**. Handles the tricky corner cases correctly by computing the closest point on the rectangle to the circle's center and comparing the distance to the radius. More accurate than a bounding-box approximation — a circle clipping a rectangle corner registers as a hit, while the equivalent AABB test would miss it. Used for ball-vs-paddle, character-vs-wall, and bullet-vs-obstacle. |
+| `CheckCollisionPointRec` | `bool(Vector2 point, Rectangle rec)` | Returns `true` if a **single point** lies inside an axis-aligned rectangle (edges included). Trivially simple but enormously useful for UI: mouse-hover detection, click-target testing, and any "did this position land in this region?" check. |
+| `CheckCollisionPointCircle` | `bool(Vector2 point, Vector2 center, float radius)` | Returns `true` if a **point** lies inside a **circle** (or exactly on its edge). Because it's radial, this is the natural test for circular UI elements — radial menus, joystick deadzones, ring-based inventory slots. Implementation: squared distance vs squared radius. |
+| `CheckCollisionPointTriangle` | `bool(Vector2 point, Vector2 p1, Vector2 p2, Vector2 p3)` | Returns `true` if a **point** lies inside a **triangle**. Uses a sign-of-cross-products test on the three edges. Rare in day-to-day games but useful for irregular UI hit regions, sloped platforms, and custom trigger zones. If you have a polygon, decompose it into triangles and test them in a loop. |
+| `CheckCollisionLines` | `bool(Vector2 p1, Vector2 p2, Vector2 p3, Vector2 p4, Vector2 *collisionPoint)` | Returns `true` if two **line segments** intersect, and writes the intersection point into `*collisionPoint` if so. This is the ray/segment test you'd use for: hitscan weapons (bullet path vs. wall), line-of-sight checks (enemy-to-player clear?), and swept collision (previous-position to next-position segment vs. a wall). Unlike the shape tests, it produces **where** the collision happened — essential for placing an impact spark or tracing a bullet trail. |
+| `CheckCollisionCircleLine` | `bool(Vector2 center, float radius, Vector2 p1, Vector2 p2)` | Returns `true` if a **circle** intersects a **line segment**. Equivalent to: is the segment's closest point to the circle center within `radius`? The same building block as `CheckCollisionLines`, but for a moving circle rather than a moving point. Use it for swept collision of a ball against a wall in a single step, eliminating tunneling at high speeds. |
 
 **Critical fact:** all of these return `true` on collision and `false` otherwise. None of them resolve the collision for you. There is no physics engine inside Raylib. Detecting overlap is step one; *responding* to the overlap — pushing the objects apart, flipping velocity, triggering damage — is code you write.
 
@@ -397,8 +394,7 @@ Rectangle wall   = { 200, 100, 60, 200 };
 
 if (CheckCollisionRecs(player, wall))
 {
-    // Snap the player back to the wall's left edge
-    player.x = wall.x - player.width;
+    player.x = wall.x - player.width;   // hard snap to the wall's left edge
 }
 ```
 
@@ -443,7 +439,6 @@ typedef struct Ball {
 Ball a = { { 200, 200 }, {  2.5f,  1.5f }, 30, MAROON };
 Ball b = { { 500, 300 }, { -2.0f,  1.0f }, 30, BLUE };
 
-// Advance positions first...
 a.pos = Vector2Add(a.pos, a.vel);
 b.pos = Vector2Add(b.pos, b.vel);
 
@@ -458,7 +453,6 @@ if (CheckCollisionCircles(a.pos, a.radius, b.pos, b.radius))
     a.vel = Vector2Subtract(a.vel, Vector2Scale(normal, aDot - bDot));
     b.vel = Vector2Subtract(b.vel, Vector2Scale(normal, bDot - aDot));
 
-    // Separate them so they don't stay overlapped
     float overlap = a.radius + b.radius - Vector2Distance(a.pos, b.pos);
     a.pos = Vector2Add(a.pos, Vector2Scale(normal,  overlap * 0.5f));
     b.pos = Vector2Add(b.pos, Vector2Scale(normal, -overlap * 0.5f));
@@ -494,13 +488,11 @@ A player who stops dead when brushing a wall feels awful. You want them to **sli
 ```c
 Rectangle next = player;
 
-// Try the full move first.
 if (IsKeyDown(KEY_RIGHT)) next.x += speed * dt;
 if (IsKeyDown(KEY_LEFT))  next.x -= speed * dt;
 if (IsKeyDown(KEY_DOWN))  next.y += speed * dt;
 if (IsKeyDown(KEY_UP))    next.y -= speed * dt;
 
-// For each obstacle, if the full move collides, try axes separately.
 for (int i = 0; i < obstacleCount; i++)
 {
     if (CheckCollisionRecs(next, obstacles[i]))
@@ -556,13 +548,11 @@ int main(void)
         if (IsKeyDown(KEY_DOWN)  || IsKeyDown(KEY_S)) next.y += speed * dt;
         if (IsKeyDown(KEY_UP)    || IsKeyDown(KEY_W)) next.y -= speed * dt;
 
-        // Window bounds
         if (next.x < 0) next.x = 0;
         if (next.y < 0) next.y = 0;
         if (next.x + next.width  > W) next.x = W - next.width;
         if (next.y + next.height > H) next.y = H - next.height;
 
-        // Rectangle collisions with sliding
         bool hit = false;
         for (int i = 0; i < obstacleCount; i++)
         {
@@ -577,7 +567,6 @@ int main(void)
             }
         }
 
-        // Circle collision
         Vector2 playerCenter = { next.x + next.width / 2, next.y + next.height / 2 };
         if (CheckCollisionCircleRec(circleCenter, circleRadius, next))
         {
@@ -790,11 +779,9 @@ int main(void)
         BeginDrawing();
             ClearBackground(RAYWHITE);
 
-            // Ground
             DrawRectangle(0, (int)GROUND_Y, W, H - (int)GROUND_Y, DARKGREEN);
             DrawLine(0, (int)GROUND_Y, W, (int)GROUND_Y, DARKGREEN);
 
-            // Shadow that shrinks with height
             float heightAboveGround = GROUND_Y - (player.position.y + player.rec.height);
             float shadowScale = 1.0f - (heightAboveGround / 200.0f);
             if (shadowScale < 0.3f) shadowScale = 0.3f;
@@ -917,8 +904,8 @@ The mental model:
 
 | Function | Description |
 |----------|-------------|
-| `BeginMode2D(Camera2D camera)` | Everything drawn after this is transformed by the camera. |
-| `EndMode2D(void)` | Pops back to screen-space drawing. |
+| `BeginMode2D(Camera2D camera)` | Switches Raylib into **camera-transformed drawing mode**. Everything drawn between this call and the matching `EndMode2D()` is interpreted in **world coordinates** — the camera's target, offset, zoom, and rotation are applied to every vertex. The camera struct is passed **by value**, so Raylib takes a snapshot; mutations to the struct inside the bracket won't be re-read until the next frame. Note that you still need an enclosing `BeginDrawing`/`EndDrawing` pair — `BeginMode2D` nests inside it. |
+| `EndMode2D(void)` | Pops the camera transform off the internal stack, returning to **screen-space drawing**. Everything drawn after this call uses pixel coordinates relative to the window's top-left corner, unaffected by the camera. This is where you draw your HUD, score, minimap, and menus. Must be paired with exactly one preceding `BeginMode2D`. |
 
 Everything between `BeginMode2D` and `EndMode2D` uses **world coordinates** — the coordinates of your level. Everything outside uses **screen coordinates** — pixel coordinates on the actual window. This distinction is fundamental. Draw your game world between the brackets; draw your HUD outside them.
 
@@ -957,23 +944,19 @@ int main(void)
             ClearBackground(RAYWHITE);
 
             BeginMode2D(camera);
-                // A big grid so you can see the camera moving
                 for (int x = -1000; x <= 1000; x += 50)
                     DrawLine(x, -1000, x, 1000, LIGHTGRAY);
                 for (int y = -1000; y <= 1000; y += 50)
                     DrawLine(-1000, y, 1000, y, LIGHTGRAY);
 
-                // Some world objects
                 DrawCircleV((Vector2){ 200, 200 }, 40, MAROON);
                 DrawRectangle(600, 500, 80, 80, BLUE);
                 DrawPoly((Vector2){ -300, 400 }, 6, 60, 0, PURPLE);
 
-                // The player (world-space)
                 DrawCircleV(player, 20, SKYBLUE);
                 DrawCircleLinesV(player, 20, DARKBLUE);
             EndMode2D();
 
-            // Screen-space HUD
             DrawText(TextFormat("Player: %.0f, %.0f", player.x, player.y),
                      10, 10, 20, DARKGRAY);
             DrawText("WASD to move, world scrolls", 10, 35, 18, GRAY);
@@ -1043,7 +1026,6 @@ const float LEVEL_RIGHT  = 3000.0f;
 const float LEVEL_TOP    =    0.0f;
 const float LEVEL_BOTTOM = 2000.0f;
 
-// Half the screen in world units (accounting for zoom)
 float halfW = (GetScreenWidth()  / 2.0f) / camera.zoom;
 float halfH = (GetScreenHeight() / 2.0f) / camera.zoom;
 
@@ -1065,13 +1047,9 @@ if (LEVEL_RIGHT - LEVEL_LEFT < 2.0f * halfW)
 Whenever you use a camera, you need to translate between the two coordinate spaces. Common cases: spawning objects at the mouse, drawing a name tag over an entity, or checking a click against a world object.
 
 ```c
-// Convert a screen point (e.g. mouse) to a world point
-Vector2 worldPos = GetScreenToWorld2D(GetMousePosition(), camera);
-
-// Convert a world point (e.g. an enemy) to a screen point
+Vector2 worldPos  = GetScreenToWorld2D(GetMousePosition(), camera);
 Vector2 screenPos = GetWorldToScreen2D(enemyPos, camera);
 
-// Example: click to spawn a marker at the mouse position
 if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
 {
     Vector2 spawn = GetScreenToWorld2D(GetMousePosition(), camera);
@@ -1202,7 +1180,6 @@ int main(void)
             DrawText(TextFormat("Markers: %d", markerCount), 10, 60, 20, DARKGRAY);
             DrawText("WASD move | Wheel zoom | Click place marker", 10, H - 30, 18, GRAY);
 
-            // Mini-map in the top-right (screen space)
             const float MM_W = 200, MM_H = 130;
             float mmX = W - MM_W - 10, mmY = 10;
             float sx = MM_W / (LEVEL_RIGHT - LEVEL_LEFT);
@@ -1237,11 +1214,11 @@ int main(void)
 
 | Function | Description |
 |----------|-------------|
-| `BeginMode2D(Camera2D camera)` | Applies the camera transform to all subsequent draws. |
-| `EndMode2D(void)` | Restores screen-space drawing. |
-| `GetScreenToWorld2D(Vector2 position, Camera2D camera)` | Converts a screen point (e.g. mouse) to a world point. |
-| `GetWorldToScreen2D(Vector2 position, Camera2D camera)` | Converts a world point to a screen point. |
-| `GetCameraMatrix2D(Camera2D camera)` | Returns the underlying `Matrix` — rarely needed by hand. |
+| `BeginMode2D(Camera2D camera)` | Pushes a 2D camera transform onto the drawing stack. All subsequent draws are interpreted in **world coordinates** until the matching `EndMode2D`. The camera is passed by value — a snapshot is taken at the moment of the call, so mutating the struct mid-frame has no effect until the next `BeginMode2D`. Nests inside `BeginDrawing`/`EndDrawing`. |
+| `EndMode2D(void)` | Pops the camera transform, returning drawing to **screen space**. Every `Draw*` after this uses raw window coordinates. Must be paired with exactly one `BeginMode2D` — an unmatched call corrupts the internal matrix stack. Draw HUD, menus, and debug overlays after this. |
+| `GetScreenToWorld2D(Vector2 position, Camera2D camera)` | Converts a **screen-space point** (like `GetMousePosition()`) into a **world-space point**, respecting the camera's target, offset, zoom, and rotation. This is how you turn a mouse click into a world position for spawning objects, selecting units, or painting tiles. Essential — doing the math by hand is a common bug source because zoom and rotation are easy to forget. |
+| `GetWorldToScreen2D(Vector2 position, Camera2D camera)` | The inverse of `GetScreenToWorld2D`. Takes a **world-space point** and returns where it lands on the **screen**. Use it for anchoring a screen-space UI element to a world object — a health bar above an enemy, a floating damage number, or a quest marker arrow that always points to the next objective. |
+| `GetCameraMatrix2D(Camera2D camera)` | Returns the underlying 4×4 `Matrix` that represents the camera transform. Almost never needed in daily code — the begin/end mode functions handle it for you. Exposed for advanced use cases like passing the camera matrix to a custom shader or composing with another transform. |
 
 ### Notes
 
