@@ -2,60 +2,477 @@
 #include <stdio.h>
 #include <math.h>
 
-void InitGame(Game* game) {
-    InitLevel(&game->level);
+#define TAG_COOLDOWN 1.5f
 
-    InitPlayer(&game->player,
-        game->level.playerStart.x,
-        game->level.playerStart.y,
-        INPUT_ARROWS, RED);
+// ---------------------------------------------------------------------------
+// Particles
+// ---------------------------------------------------------------------------
 
-    InitPlayer(&game->player2,
-        game->level.playerStart.x + 50,
-        game->level.playerStart.y,
-        INPUT_WASD, BLUE);
+static float Rand01G(unsigned int seed) {
+    seed = ((seed >> 16) ^ seed) * 0x45d9f3b;
+    seed = ((seed >> 16) ^ seed) * 0x45d9f3b;
+    seed = (seed >> 16) ^ seed;
+    return (float)(seed & 0xFFFF) / 65535.0f;
+}
+
+static int AllocParticle(Game* game) {
+    for (int i = 0; i < MAX_PARTICLES; i++) {
+        if (!game->particles[i].active) return i;
+    }
+    return -1;
+}
+
+static void SpawnDust(Game* game, Vector2 pos, int count,
+    float spreadX, float baseY, Color tint)
+{
+    unsigned int now = (unsigned int)(GetTime() * 1000.0f);
+    for (int i = 0; i < count; i++) {
+        int idx = AllocParticle(game);
+        if (idx < 0) return;
+
+        Particle* p = &game->particles[idx];
+        p->active = true;
+
+        float ox = (Rand01G(now + i * 17) - 0.5f) * spreadX;
+        float oy = (Rand01G(now + i * 29) - 0.5f) * 6.0f;
+
+        p->position = (Vector2){ pos.x + ox, pos.y + oy };
+
+        float vx = (Rand01G(now + i * 41) - 0.5f) * spreadX * 4.0f;
+        float vy = baseY + Rand01G(now + i * 53) * 40.0f;
+
+        p->velocity = (Vector2){ vx, vy };
+
+        p->maxLife = 0.35f + Rand01G(now + i * 67) * 0.35f;
+        p->life = p->maxLife;
+        p->size = 2.5f + Rand01G(now + i * 71) * 2.5f;
+        p->color = tint;
+    }
+}
+
+static void UpdateParticles(Game* game, float deltaTime) {
+    for (int i = 0; i < MAX_PARTICLES; i++) {
+        Particle* p = &game->particles[i];
+        if (!p->active) continue;
+
+        p->life -= deltaTime;
+        if (p->life <= 0.0f) { p->active = false; continue; }
+
+        p->position.x += p->velocity.x * deltaTime;
+        p->position.y += p->velocity.y * deltaTime;
+
+        p->velocity.x *= 1.0f - 3.0f * deltaTime;
+        p->velocity.y += 120.0f * deltaTime;
+    }
+}
+
+static void DrawParticles(Game* game) {
+    for (int i = 0; i < MAX_PARTICLES; i++) {
+        Particle* p = &game->particles[i];
+        if (!p->active) continue;
+
+        float t = p->life / p->maxLife;
+        unsigned char a = (unsigned char)(255 * t * t);
+        float r = p->size * (1.0f + (1.0f - t) * 0.8f);
+
+        Color c = p->color;
+        c.a = a;
+        DrawCircleV(p->position, r, c);
+    }
+}
+
+static void ClearParticles(Game* game) {
+    for (int i = 0; i < MAX_PARTICLES; i++) game->particles[i].active = false;
+}
+
+// ---------------------------------------------------------------------------
+// Power-ups
+// ---------------------------------------------------------------------------
+
+static Color PowerupColor(PowerupKind kind) {
+    switch (kind) {
+    case POWERUP_SPEED:  return (Color) { 255, 220, 60, 255 };
+    case POWERUP_JUMP:   return (Color) { 100, 220, 255, 255 };
+    case POWERUP_SHIELD: return (Color) { 120, 255, 140, 255 };
+    default:             return WHITE;
+    }
+}
+
+static void SpawnOnePowerup(Game* game) {
+    Vector2 pos = GetRandomSpawnPoint(&game->level, 24.0f, 24.0f);
+    pos.x += 12.0f;
+    pos.y += 12.0f;
+
+    Powerup* p = &game->powerups[0];
+    p->position = pos;
+    p->kind = (PowerupKind)GetRandomValue(0, POWERUP_KIND_COUNT - 1);
+    p->active = true;
+    p->respawnTimer = 0.0f;
+    p->bobPhase = (float)GetRandomValue(0, 628) / 100.0f;
+}
+
+static void SeedPowerups(Game* game) {
+    for (int i = 0; i < MAX_POWERUPS; i++) {
+        game->powerups[i].active = false;
+        game->powerups[i].respawnTimer = 0.0f;
+    }
+    SpawnOnePowerup(game);
+}
+
+static void CollectPowerup(Game* game, Player* player, Powerup* power) {
+    Player* other = (player == &game->player) ? &game->player2 : &game->player;
+
+    player->speedBoostTimer = 0.0f;
+    player->jumpBoostTimer = 0.0f;
+    player->shieldTimer = 0.0f;
+    other->speedBoostTimer = 0.0f;
+    other->jumpBoostTimer = 0.0f;
+    other->shieldTimer = 0.0f;
+
+    switch (power->kind) {
+    case POWERUP_SPEED:  player->speedBoostTimer = 5.0f; break;
+    case POWERUP_JUMP:   player->jumpBoostTimer = 5.0f; break;
+    case POWERUP_SHIELD: player->shieldTimer = 4.0f; break;
+    default: break;
+    }
+
+    Color c = PowerupColor(power->kind);
+    SpawnDust(game, power->position, 16, 40.0f, -60.0f, c);
+
+    power->active = false;
+    power->respawnTimer = 6.0f;
+}
+
+static void UpdatePowerups(Game* game, float deltaTime) {
+    for (int i = 0; i < MAX_POWERUPS; i++) {
+        Powerup* p = &game->powerups[i];
+
+        if (!p->active) {
+            if (p->respawnTimer > 0.0f) {
+                p->respawnTimer -= deltaTime;
+                if (p->respawnTimer <= 0.0f) {
+                    SpawnOnePowerup(game);
+                }
+            }
+            continue;
+        }
+
+        p->bobPhase += deltaTime * 3.0f;
+
+        Rectangle r = { p->position.x - 12.0f, p->position.y - 12.0f,
+                        24.0f, 24.0f };
+
+        if (CheckCollisionRecs(r, game->player.rec)) {
+            CollectPowerup(game, &game->player, p);
+        }
+        else if (CheckCollisionRecs(r, game->player2.rec)) {
+            CollectPowerup(game, &game->player2, p);
+        }
+    }
+}
+
+static void DrawPowerup(Powerup* p) {
+    if (!p->active) return;
+
+    Color c = PowerupColor(p->kind);
+    float bob = sinf(p->bobPhase) * 3.0f;
+    Vector2 pos = { p->position.x, p->position.y + bob };
+
+    DrawCircleV(pos, 18.0f, Fade(c, 0.20f));
+    DrawCircleV(pos, 13.0f, Fade(c, 0.35f));
+    DrawCircleV(pos, 10.0f, c);
+    DrawCircleV(pos, 6.0f, Fade(WHITE, 0.55f));
+
+    switch (p->kind) {
+    case POWERUP_SPEED: {
+        Vector2 a = { pos.x - 2, pos.y - 6 };
+        Vector2 b = { pos.x + 2, pos.y - 1 };
+        Vector2 c1 = { pos.x - 1, pos.y - 1 };
+        Vector2 d = { pos.x + 2, pos.y + 6 };
+        Vector2 e = { pos.x - 2, pos.y + 1 };
+        Vector2 f = { pos.x + 1, pos.y + 1 };
+        DrawTriangle(a, b, c1, BLACK);
+        DrawTriangle(d, e, f, BLACK);
+        break;
+    }
+    case POWERUP_JUMP: {
+        Vector2 tip = { pos.x,     pos.y - 6 };
+        Vector2 right = { pos.x + 5, pos.y - 1 };
+        Vector2 left = { pos.x - 5, pos.y - 1 };
+        DrawTriangle(tip, right, left, BLACK);
+        DrawRectangle((int)(pos.x - 2), (int)(pos.y - 1), 4, 7, BLACK);
+        break;
+    }
+    case POWERUP_SHIELD: {
+        DrawCircleLines((int)pos.x, (int)pos.y, 5, BLACK);
+        DrawCircleLines((int)pos.x, (int)pos.y, 4, BLACK);
+        break;
+    }
+    default: break;
+    }
+}
+
+static void DrawPowerups(Game* game) {
+    for (int i = 0; i < MAX_POWERUPS; i++) {
+        DrawPowerup(&game->powerups[i]);
+    }
+}
+
+// Soft aura behind a player, tinted to whichever power-up they have active.
+// Draws nothing if no buff is active.
+static void DrawPlayerGlow(Player* p) {
+    Color glow = WHITE;
+    bool  active = false;
+    float timer = 0.0f;
+    float maxTimer = 1.0f;
+
+    if (p->speedBoostTimer > 0.0f) {
+        glow = (Color){ 255, 220,  60, 255 };
+        timer = p->speedBoostTimer;
+        maxTimer = 5.0f;
+        active = true;
+    }
+    else if (p->jumpBoostTimer > 0.0f) {
+        glow = (Color){ 100, 220, 255, 255 };
+        timer = p->jumpBoostTimer;
+        maxTimer = 5.0f;
+        active = true;
+    }
+    else if (p->shieldTimer > 0.0f) {
+        glow = (Color){ 120, 255, 140, 255 };
+        timer = p->shieldTimer;
+        maxTimer = 4.0f;
+        active = true;
+    }
+
+    if (!active) return;
+
+    Vector2 c = {
+        p->position.x + p->rec.width * 0.5f,
+        p->position.y + p->rec.height * 0.5f
+    };
+
+    // Fade out over the last ~1.2s of the buff
+    float tail = (timer < 1.2f) ? (timer / 1.2f) : 1.0f;
+
+    // Gentle breathing pulse
+    float pulse = 1.0f + sinf((float)GetTime() * 6.0f) * 0.06f;
+    float baseR = 22.0f * pulse;
+
+    DrawCircleV(c, baseR + 8.0f, Fade(glow, 0.10f * tail));
+    DrawCircleV(c, baseR + 4.0f, Fade(glow, 0.18f * tail));
+    DrawCircleV(c, baseR, Fade(glow, 0.28f * tail));
+}
+
+// ---------------------------------------------------------------------------
+// Setup
+// ---------------------------------------------------------------------------
+
+static void ClearPowerups(Game* game) {
+    for (int i = 0; i < MAX_POWERUPS; i++) {
+        game->powerups[i].active = false;
+        game->powerups[i].respawnTimer = 0.0f;
+    }
+}
+
+static void StartMatch(Game* game, MapTheme theme) {
+    InitLevel(&game->level, theme);
+
+    Vector2 spawn1 = GetRandomSpawnPoint(&game->level, 30.0f, 30.0f);
+    Vector2 spawn2 = GetRandomSpawnPoint(&game->level, 30.0f, 30.0f);
+    if (fabsf(spawn1.x - spawn2.x) < 40.0f &&
+        fabsf(spawn1.y - spawn2.y) < 40.0f) {
+        spawn2 = GetRandomSpawnPoint(&game->level, 30.0f, 30.0f);
+    }
+
+    InitPlayer(&game->player, spawn1.x, spawn1.y, INPUT_ARROWS, RED);
+    InitPlayer(&game->player2, spawn2.x, spawn2.y, INPUT_WASD, BLUE);
 
     game->camera.target = (Vector2){ game->player.position.x, game->player.position.y };
     game->camera.offset = (Vector2){ GetScreenWidth() / 2.0f, GetScreenHeight() / 2.0f };
     game->camera.rotation = 0.0f;
     game->camera.zoom = 1.0f;
 
+    game->itIndex = GetRandomValue(0, 1);
+    game->tagCooldown = 0.0f;
+    game->tagFlashTimer = 0.0f;
+    game->cameraShake = 0.0f;
+    game->cameraShakeTimer = 0.0f;
+
     game->gameWon = false;
     game->gameOver = false;
+    game->gameTimedOut = false;
+    game->gameTimer = TIMER_SECONDS;
     game->score = 0;
     game->jumpscareTimer = 0.0f;
     game->deathTimer = 0.0f;
     game->deathPosition = (Vector2){ 0, 0 };
+
+    game->exploding = false;
+    game->explosionTimer = 0.0f;
+    game->explosionPos = (Vector2){ 0, 0 };
+
+    ClearParticles(game);
+    SeedPowerups(game);
+
+    game->scene = SCENE_PLAY;
 }
 
-// Discrete zoom steps. All of these scale cleanly (no fractional pixel drift).
+void InitGame(Game* game) {
+    game->scene = SCENE_MENU;
+    game->menuSelection = 0;
+
+    InitLevel(&game->level, MAP_NORMAL);
+    InitPlayer(&game->player, 100, 100, INPUT_ARROWS, RED);
+    InitPlayer(&game->player2, 130, 100, INPUT_WASD, BLUE);
+
+    game->camera.target = (Vector2){ 0, 0 };
+    game->camera.offset = (Vector2){ GetScreenWidth() / 2.0f, GetScreenHeight() / 2.0f };
+    game->camera.rotation = 0.0f;
+    game->camera.zoom = 1.0f;
+
+    game->itIndex = 0;
+    game->tagCooldown = 0.0f;
+    game->tagFlashTimer = 0.0f;
+    game->cameraShake = 0.0f;
+    game->cameraShakeTimer = 0.0f;
+
+    game->gameWon = false;
+    game->gameOver = false;
+    game->gameTimedOut = false;
+    game->gameTimer = TIMER_SECONDS;
+    game->score = 0;
+    game->jumpscareTimer = 0.0f;
+    game->deathTimer = 0.0f;
+    game->deathPosition = (Vector2){ 0, 0 };
+
+    game->exploding = false;
+    game->explosionTimer = 0.0f;
+    game->explosionPos = (Vector2){ 0, 0 };
+
+    ClearParticles(game);
+    ClearPowerups(game);
+}
+
+// ---------------------------------------------------------------------------
+// Zoom snap
+// ---------------------------------------------------------------------------
+
 static const float ZOOM_STEPS[] = { 0.5f, 0.75f, 1.0f, 1.5f, 2.0f };
 #define ZOOM_STEP_COUNT (sizeof(ZOOM_STEPS) / sizeof(ZOOM_STEPS[0]))
 
-// Snap a raw zoom value to the nearest discrete step.
 static float SnapZoom(float raw) {
     float best = ZOOM_STEPS[0];
     float bestDist = fabsf(raw - ZOOM_STEPS[0]);
     for (int i = 1; i < (int)ZOOM_STEP_COUNT; i++) {
         float d = fabsf(raw - ZOOM_STEPS[i]);
-        if (d < bestDist) {
-            bestDist = d;
-            best = ZOOM_STEPS[i];
-        }
+        if (d < bestDist) { bestDist = d; best = ZOOM_STEPS[i]; }
     }
     return best;
 }
 
+// ---------------------------------------------------------------------------
+// Update
+// ---------------------------------------------------------------------------
+
 void UpdateGame(Game* game, float deltaTime) {
-    if (!game->gameWon && !game->gameOver) {
+    if (IsKeyPressed(KEY_R)) {
+        game->scene = SCENE_MENU;
+        game->gameOver = false;
+        game->gameTimedOut = false;
+        game->gameWon = false;
+        game->menuSelection = 0;
+        game->exploding = false;
+        game->explosionTimer = 0.0f;
+        ClearParticles(game);
+        ClearPowerups(game);
+        return;
+    }
+
+    if (game->scene == SCENE_MENU) {
+        if (IsKeyPressed(KEY_RIGHT) || IsKeyPressed(KEY_D))
+            game->menuSelection = (game->menuSelection + 1) % MAP_THEME_COUNT;
+        if (IsKeyPressed(KEY_LEFT) || IsKeyPressed(KEY_A))
+            game->menuSelection = (game->menuSelection + MAP_THEME_COUNT - 1) % MAP_THEME_COUNT;
+        if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE))
+            StartMatch(game, (MapTheme)game->menuSelection);
+        return;
+    }
+
+    if (game->scene == SCENE_PLAY && !game->gameWon && !game->gameOver && !game->gameTimedOut) {
         UpdateLevelBackground(&game->level, deltaTime);
 
         UpdatePlayer(&game->player, &game->level, deltaTime);
         UpdatePlayer(&game->player2, &game->level, deltaTime);
 
-        // ---- Camera: zoom to fit both players, snapped to clean steps ----
-        const float margin = 120.0f;
+        if (game->player.jumpedThisFrame) {
+            Vector2 foot = { game->player.position.x + game->player.rec.width * 0.5f,
+                             game->player.position.y + game->player.rec.height };
+            SpawnDust(game, foot, 6, 18.0f, -30.0f, (Color) { 230, 230, 230, 255 });
+        }
+        if (game->player2.jumpedThisFrame) {
+            Vector2 foot = { game->player2.position.x + game->player2.rec.width * 0.5f,
+                             game->player2.position.y + game->player2.rec.height };
+            SpawnDust(game, foot, 6, 18.0f, -30.0f, (Color) { 230, 230, 230, 255 });
+        }
 
+        if (game->player.landedThisFrame) {
+            Vector2 foot = { game->player.position.x + game->player.rec.width * 0.5f,
+                             game->player.position.y + game->player.rec.height };
+            int count = (int)(6 + game->player.landImpact * 8.0f);
+            SpawnDust(game, foot, count, 28.0f, -20.0f, (Color) { 210, 210, 210, 255 });
+        }
+        if (game->player2.landedThisFrame) {
+            Vector2 foot = { game->player2.position.x + game->player2.rec.width * 0.5f,
+                             game->player2.position.y + game->player2.rec.height };
+            int count = (int)(6 + game->player2.landImpact * 8.0f);
+            SpawnDust(game, foot, count, 28.0f, -20.0f, (Color) { 210, 210, 210, 255 });
+        }
+
+        UpdateParticles(game, deltaTime);
+        UpdatePowerups(game, deltaTime);
+
+        if (game->tagCooldown > 0.0f) {
+            game->tagCooldown -= deltaTime;
+            if (game->tagCooldown < 0.0f) game->tagCooldown = 0.0f;
+        }
+        if (game->tagFlashTimer > 0.0f) {
+            game->tagFlashTimer -= deltaTime;
+            if (game->tagFlashTimer < 0.0f) game->tagFlashTimer = 0.0f;
+        }
+        if (game->cameraShakeTimer > 0.0f) {
+            game->cameraShakeTimer -= deltaTime;
+            if (game->cameraShakeTimer < 0.0f) game->cameraShakeTimer = 0.0f;
+        }
+
+        Player* runner = (game->itIndex == 0) ? &game->player2 : &game->player;
+
+        if (game->tagCooldown <= 0.0f &&
+            runner->shieldTimer <= 0.0f &&
+            CheckCollisionRecs(game->player.rec, game->player2.rec)) {
+            game->itIndex = 1 - game->itIndex;
+            game->tagCooldown = TAG_COOLDOWN;
+            game->tagFlashTimer = 0.4f;
+            game->cameraShake = 6.0f;
+            game->cameraShakeTimer = 0.25f;
+        }
+
+        game->gameTimer -= deltaTime;
+        if (game->gameTimer <= 0.0f) {
+            game->gameTimer = 0.0f;
+            game->gameTimedOut = true;
+            game->scene = SCENE_END;
+
+            Player* tagger = (game->itIndex == 0) ? &game->player : &game->player2;
+            game->explosionPos = (Vector2){
+                tagger->position.x + tagger->rec.width * 0.5f,
+                tagger->position.y + tagger->rec.height * 0.5f
+            };
+            game->explosionTimer = 0.0f;
+            game->exploding = true;
+        }
+
+        const float margin = 120.0f;
         float minX = fminf(game->player.position.x, game->player2.position.x) - margin;
         float maxX = fmaxf(game->player.position.x + game->player.rec.width,
             game->player2.position.x + game->player2.rec.width) + margin;
@@ -69,24 +486,15 @@ void UpdateGame(Game* game, float deltaTime) {
         float zoomX = (float)GetScreenWidth() / boxW;
         float zoomY = (float)GetScreenHeight() / boxH;
         float rawZoom = fminf(zoomX, zoomY);
-
-        // Snap the target to a clean step
         float targetZoom = SnapZoom(rawZoom);
 
-        // Smooth toward the snapped target, then jump exactly onto it.
         float diff = targetZoom - game->camera.zoom;
-        if (fabsf(diff) < 0.01f) {
-            game->camera.zoom = targetZoom;
-        }
-        else {
-            game->camera.zoom += diff * fminf(1.0f, deltaTime * 8.0f);
-        }
+        if (fabsf(diff) < 0.01f) game->camera.zoom = targetZoom;
+        else game->camera.zoom += diff * fminf(1.0f, deltaTime * 8.0f);
 
-        // Center camera on the bounding box midpoint
         float camX = (minX + maxX) * 0.5f;
         float camY = (minY + maxY) * 0.5f;
 
-        // Clamp camera so we don't show empty space outside the world
         float halfW = GetScreenWidth() / (2.0f * game->camera.zoom);
         float halfH = GetScreenHeight() / (2.0f * game->camera.zoom);
 
@@ -94,33 +502,47 @@ void UpdateGame(Game* game, float deltaTime) {
             if (camX < halfW) camX = halfW;
             if (camX > game->level.worldWidth - halfW) camX = game->level.worldWidth - halfW;
         }
-        else {
-            camX = game->level.worldWidth * 0.5f;
-        }
+        else camX = game->level.worldWidth * 0.5f;
         if (game->level.worldHeight > halfH * 2.0f) {
             if (camY < halfH) camY = halfH;
             if (camY > game->level.worldHeight - halfH) camY = game->level.worldHeight - halfH;
         }
-        else {
-            camY = game->level.worldHeight * 0.5f;
+        else camY = game->level.worldHeight * 0.5f;
+
+        if (game->cameraShakeTimer > 0.0f) {
+            float strength = game->cameraShakeTimer / 0.25f;
+            float amp = game->cameraShake * strength;
+            float t = (float)GetTime() * 60.0f;
+            camX += sinf(t * 1.7f) * amp;
+            camY += cosf(t * 2.3f) * amp;
         }
 
         game->camera.target = (Vector2){ camX, camY };
+        return;
     }
-    else if (game->gameOver) {
-        game->deathTimer += deltaTime;
-        game->jumpscareTimer += deltaTime;
 
-        if (game->deathTimer > 2.0f && IsKeyPressed(KEY_R)) {
-            InitGame(game);
+    if (game->scene == SCENE_END || game->gameOver) {
+        UpdateParticles(game, deltaTime);
+
+        if (game->exploding) {
+            game->explosionTimer += deltaTime;
+            if (game->explosionTimer > 2.5f) game->exploding = false;
         }
-    }
-    else if (game->gameWon) {
-        if (IsKeyPressed(KEY_R)) {
-            InitGame(game);
+        if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE)) {
+            game->scene = SCENE_MENU;
+            game->gameOver = false;
+            game->gameTimedOut = false;
+            game->exploding = false;
+            game->explosionTimer = 0.0f;
+            ClearParticles(game);
+            ClearPowerups(game);
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Jumpscare (dormant)
+// ---------------------------------------------------------------------------
 
 void DrawJumpscare(Game* game) {
     float screenW = GetScreenWidth();
@@ -166,47 +588,268 @@ void DrawJumpscare(Game* game) {
         },
             (Color) {
             255, 255, 220, 255
-        }
-        );
-    }
-
-    for (int i = 0; i < 5; i++) {
-        float dripX = faceX - 100 * faceScale + i * 50 * faceScale;
-        float dripY = faceY - 150 * faceScale;
-        float dripLength = 30 * faceScale + sinf(game->jumpscareTimer * 5 + i) * 10;
-        DrawRectangle(dripX, dripY, 10 * faceScale, dripLength, (Color) { 150, 0, 0, 255 });
-        DrawCircle(dripX + 5 * faceScale, dripY + dripLength, 5 * faceScale, (Color) { 150, 0, 0, 255 });
-    }
-
-    if (game->jumpscareTimer > 0.5f) {
-        float shakeAmount = (game->jumpscareTimer - 0.5f) * 20;
-        float shakeX = sinf(game->jumpscareTimer * 50) * shakeAmount;
-        float shakeY = cosf(game->jumpscareTimer * 50) * shakeAmount;
-
-        for (int i = 0; i < 50; i++) {
-            float x = (float)(rand() % (int)screenW) + shakeX;
-            float y = (float)(rand() % (int)screenH) + shakeY;
-            DrawPixel(x, y, WHITE);
-        }
-    }
-
-    if (game->jumpscareTimer > 1.0f) {
-        const char* diedText = "YOU DIED";
-        int textWidth = MeasureText(diedText, 60);
-        DrawText(diedText, screenW / 2 - textWidth / 2, screenH / 2 - 250, 60,
-            (Color) {
-            200, 0, 0, 255
         });
-    }
-
-    if (game->jumpscareTimer > 1.33f) {
-        const char* restartText = "Press R to restart";
-        int restartWidth = MeasureText(restartText, 30);
-        DrawText(restartText, screenW / 2 - restartWidth / 2, screenH / 2 - 170, 30, ORANGE);
     }
 }
 
+// ---------------------------------------------------------------------------
+// IT arrow
+// ---------------------------------------------------------------------------
+
+static void DrawItArrowWorld(Player* p, Camera2D* camera) {
+    Vector2 worldHead = {
+        p->position.x + p->rec.width * 0.5f,
+        p->position.y
+    };
+    Vector2 screenHead = GetWorldToScreen2D(worldHead, *camera);
+
+    float cx = screenHead.x;
+    float tipY = screenHead.y - 10.0f;
+    float baseY = tipY - 14.0f;
+    float halfW = 9.0f;
+
+    Vector2 tip = { cx,         tipY };
+    Vector2 right = { cx + halfW, baseY };
+    Vector2 left = { cx - halfW, baseY };
+    DrawTriangle(tip, right, left, WHITE);
+}
+
+// ---------------------------------------------------------------------------
+// Explosion
+// ---------------------------------------------------------------------------
+
+static void DrawExplosion(Game* game) {
+    if (game->explosionTimer == 0.0f && !game->exploding) return;
+    if (game->explosionTimer > 2.5f) return;
+
+    float t = game->explosionTimer;
+    Vector2 pos = game->explosionPos;
+
+    if (t < 0.15f) {
+        float a = 1.0f - (t / 0.15f);
+        DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(),
+            Fade(WHITE, a * 0.9f));
+    }
+
+    if (t < 0.4f) {
+        float p = t / 0.4f;
+        float r = 20.0f + p * 120.0f;
+        unsigned char a = (unsigned char)(255 * (1.0f - p));
+
+        DrawCircleV(pos, r * 1.00f, (Color) { 255, 100, 30, a });
+        DrawCircleV(pos, r * 0.75f, (Color) { 255, 180, 60, a });
+        DrawCircleV(pos, r * 0.45f, (Color) { 255, 240, 180, a });
+        DrawCircleV(pos, r * 0.20f, (Color) { 255, 255, 255, a });
+    }
+
+    if (t > 0.05f && t < 1.0f) {
+        float p = (t - 0.05f) / 0.95f;
+        float r = 30.0f + p * 260.0f;
+        unsigned char a = (unsigned char)(220 * (1.0f - p));
+
+        DrawCircleLines((int)pos.x, (int)pos.y, r, (Color) { 255, 200, 120, a });
+        DrawCircleLines((int)pos.x, (int)pos.y, r + 3.0f, (Color) { 255, 160, 80, (unsigned char)(a * 0.7f) });
+        DrawCircleLines((int)pos.x, (int)pos.y, r + 6.0f, (Color) { 255, 120, 60, (unsigned char)(a * 0.4f) });
+    }
+
+    if (t < 1.5f) {
+        const int N = 32;
+        for (int i = 0; i < N; i++) {
+            float ang = (float)i / (float)N * 2.0f * PI;
+            float speed = 180.0f + ((i * 37) % 100) * 1.2f;
+            ang += sinf((float)i * 12.9898f) * 0.15f;
+
+            float dist = speed * t;
+            float life = 1.0f - (t / 1.5f);
+            if (life < 0.0f) life = 0.0f;
+
+            float px = pos.x + cosf(ang) * dist;
+            float py = pos.y + sinf(ang) * dist;
+            py += 120.0f * t * t;
+
+            unsigned char a = (unsigned char)(255 * life);
+
+            if (i % 3 == 0) {
+                DrawCircleV((Vector2) { px, py }, 5.0f, (Color) { 255, 220, 100, a });
+                DrawCircleV((Vector2) { px, py }, 3.0f, (Color) { 255, 255, 220, a });
+            }
+            else if (i % 3 == 1) {
+                DrawCircleV((Vector2) { px, py }, 4.0f, (Color) { 255, 140, 50, a });
+            }
+            else {
+                DrawCircleV((Vector2) { px, py }, 3.0f, (Color) { 255, 90, 30, a });
+            }
+        }
+    }
+
+    if (t > 0.3f && t < 2.0f) {
+        float p = (t - 0.3f) / 1.7f;
+        const int SMOKE = 8;
+        for (int i = 0; i < SMOKE; i++) {
+            float ang = (float)i / (float)SMOKE * 2.0f * PI;
+            float dist = 30.0f + p * 80.0f;
+            float px = pos.x + cosf(ang) * dist;
+            float py = pos.y + sinf(ang) * dist - p * 30.0f;
+
+            float r = 18.0f + p * 24.0f;
+            unsigned char a = (unsigned char)(120 * (1.0f - p));
+
+            DrawCircleV((Vector2) { px, py }, r, (Color) { 60, 60, 70, a });
+            DrawCircleV((Vector2) { px, py }, r * 0.7f, (Color) { 100, 100, 110, a });
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Menu
+// ---------------------------------------------------------------------------
+
+static void DrawMenu(Game* game) {
+    int w = GetScreenWidth();
+    int h = GetScreenHeight();
+
+    ClearBackground((Color) { 15, 10, 25, 255 });
+
+    const char* title = "TAG";
+    int titleW = MeasureText(title, 90);
+    DrawText(title, w / 2 - titleW / 2, 40, 90, (Color) { 255, 200, 120, 255 });
+
+    const char* subtitle = "Pick a map";
+    int subW = MeasureText(subtitle, 24);
+    DrawText(subtitle, w / 2 - subW / 2, 140, 24, (Color) { 200, 200, 220, 255 });
+
+    const int cardW = 150;
+    const int cardH = 150;
+    const int gap = 20;
+    int totalW = cardW * MAP_THEME_COUNT + gap * (MAP_THEME_COUNT - 1);
+    int startX = w / 2 - totalW / 2;
+    int cardY = h / 2 - 120;
+
+    Color cardBg[MAP_THEME_COUNT] = {
+        (Color) {
+ 120, 100, 160, 255
+},
+(Color) {
+180, 210, 240, 255
+},
+(Color) {
+60, 130,  70, 255
+},
+(Color) {
+120,  70, 180, 255
+},
+    };
+
+    for (int i = 0; i < MAP_THEME_COUNT; i++) {
+        int cx = startX + i * (cardW + gap);
+        Rectangle rec = { cx, cardY, cardW, cardH };
+
+        DrawRectangleRec(rec, cardBg[i]);
+        DrawRectangle(cx, cardY, cardW, 30, Fade(WHITE, 0.15f));
+
+        Color border = (game->menuSelection == i) ? GOLD : (Color) { 40, 30, 60, 255 };
+        DrawRectangleLinesEx(rec, 4, border);
+
+        const char* name = GetMapThemeName((MapTheme)i);
+        int nameW = MeasureText(name, 20);
+        DrawText(name, cx + cardW / 2 - nameW / 2, cardY + cardH - 30, 20, WHITE);
+    }
+
+    const char* hint = "ARROWS or A/D to choose   ENTER to start";
+    int hintW = MeasureText(hint, 20);
+    DrawText(hint, w / 2 - hintW / 2, cardY + cardH + 15, 20,
+        (Color) {
+        180, 180, 200, 255
+    });
+
+    // ---- Power-up legend, anchored to bottom ----
+    const int bottomMargin = 40;
+
+    const char* note = "Only one power-up can be active at a time";
+    int noteW = MeasureText(note, 16);
+    int noteY = GetScreenHeight() - bottomMargin - 16;
+    DrawText(note, w / 2 - noteW / 2, noteY, 16,
+        (Color) {
+        160, 160, 180, 255
+    });
+
+    const char* legend = "POWER-UPS";
+    int legendW = MeasureText(legend, 22);
+    int legendY = noteY - 90;
+    DrawText(legend, w / 2 - legendW / 2, legendY, 22,
+        (Color) {
+        255, 200, 120, 255
+    });
+
+    struct Item {
+        Color       color;
+        const char* name;
+        const char* desc;
+    } items[3] = {
+        { (Color) { 255, 220,  60, 255 }, "SPEED",  "Run faster for 5s"      },
+        { (Color) { 100, 220, 255, 255 }, "JUMP",   "Jump higher for 5s"     },
+        { (Color) { 120, 255, 140, 255 }, "SHIELD", "Can't be tagged for 4s" },
+    };
+
+    int rowY = legendY + 35;
+    int itemW = 220;
+    int totalItemW = itemW * 3;
+    int itemStartX = w / 2 - totalItemW / 2;
+
+    for (int i = 0; i < 3; i++) {
+        int ix = itemStartX + i * itemW;
+        int iconCx = ix + 30;
+        int iconCy = rowY + 15;
+
+        DrawCircle(iconCx, iconCy, 12, Fade(items[i].color, 0.30f));
+        DrawCircle(iconCx, iconCy, 9, items[i].color);
+        DrawCircle(iconCx, iconCy, 5, Fade(WHITE, 0.55f));
+
+        switch (i) {
+        case 0: {
+            Vector2 a = { iconCx - 2, iconCy - 5 };
+            Vector2 b = { iconCx + 2, iconCy - 1 };
+            Vector2 c1 = { iconCx - 1, iconCy - 1 };
+            Vector2 d = { iconCx + 2, iconCy + 5 };
+            Vector2 e = { iconCx - 2, iconCy + 1 };
+            Vector2 f = { iconCx + 1, iconCy + 1 };
+            DrawTriangle(a, b, c1, BLACK);
+            DrawTriangle(d, e, f, BLACK);
+            break;
+        }
+        case 1: {
+            Vector2 tip = { iconCx,     iconCy - 5 };
+            Vector2 right = { iconCx + 4, iconCy - 1 };
+            Vector2 left = { iconCx - 4, iconCy - 1 };
+            DrawTriangle(tip, right, left, BLACK);
+            DrawRectangle(iconCx - 2, iconCy - 1, 4, 6, BLACK);
+            break;
+        }
+        case 2: {
+            DrawCircleLines(iconCx, iconCy, 4, BLACK);
+            DrawCircleLines(iconCx, iconCy, 3, BLACK);
+            break;
+        }
+        }
+
+        DrawText(items[i].name, iconCx + 25, rowY, 20, items[i].color);
+        DrawText(items[i].desc, iconCx + 25, rowY + 22, 16,
+            (Color) {
+            220, 220, 230, 255
+        });
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Draw
+// ---------------------------------------------------------------------------
+
 void DrawGame(Game* game) {
+    if (game->scene == SCENE_MENU) {
+        DrawMenu(game);
+        return;
+    }
+
     if (game->gameOver) {
         DrawJumpscare(game);
         return;
@@ -215,12 +858,146 @@ void DrawGame(Game* game) {
     BeginMode2D(game->camera);
     DrawLevelBackground(&game->level, &game->camera);
     DrawLevel(&game->level);
-    DrawPlayer(&game->player);
-    DrawPlayer(&game->player2);
+    DrawPowerups(game);
+
+    if (game->exploding) {
+        Player* tagger = (game->itIndex == 0) ? &game->player : &game->player2;
+        Player* runner = (game->itIndex == 0) ? &game->player2 : &game->player;
+        if (game->explosionTimer < 0.4f) DrawPlayer(tagger);
+        DrawPlayer(runner);
+    }
+    else {
+        // Glow behind each player (before their sprite)
+        DrawPlayerGlow(&game->player);
+        DrawPlayerGlow(&game->player2);
+
+        DrawPlayer(&game->player);
+        DrawPlayer(&game->player2);
+
+        // Shield rings (on top)
+        if (game->player.shieldTimer > 0.0f) {
+            Vector2 c = { game->player.position.x + game->player.rec.width * 0.5f,
+                          game->player.position.y + game->player.rec.height * 0.5f };
+            unsigned char a = (unsigned char)(180 * (game->player.shieldTimer / 4.0f));
+            DrawCircleLines((int)c.x, (int)c.y, 24, (Color) { 120, 255, 140, a });
+            DrawCircleLines((int)c.x, (int)c.y, 26, (Color) { 120, 255, 140, (unsigned char)(a / 2) });
+        }
+        if (game->player2.shieldTimer > 0.0f) {
+            Vector2 c = { game->player2.position.x + game->player2.rec.width * 0.5f,
+                          game->player2.position.y + game->player2.rec.height * 0.5f };
+            unsigned char a = (unsigned char)(180 * (game->player2.shieldTimer / 4.0f));
+            DrawCircleLines((int)c.x, (int)c.y, 24, (Color) { 120, 255, 140, a });
+            DrawCircleLines((int)c.x, (int)c.y, 26, (Color) { 120, 255, 140, (unsigned char)(a / 2) });
+        }
+    }
+
+    DrawParticles(game);
+    DrawLevelForeground(&game->level, &game->camera);
+
+    if (game->exploding) {
+        DrawExplosion(game);
+    }
+
     EndMode2D();
 
-    DrawText("P1: ARROWS + UP to jump", 10, 10, 18, RED);
-    DrawText("P2: WASD + W to jump", 10, 32, 18, BLUE);
+    if (game->scene == SCENE_PLAY && !game->gameTimedOut) {
+        Player* tagger = (game->itIndex == 0) ? &game->player : &game->player2;
+        DrawItArrowWorld(tagger, &game->camera);
+    }
+
+    if (game->scene == SCENE_PLAY && !game->gameTimedOut) {
+        DrawText("P1: ARROWS + UP to jump", 10, 10, 18, RED);
+        DrawText("P2: WASD + W to jump", 10, 32, 18, BLUE);
+
+        const char* itText = (game->itIndex == 0) ? "P1 IS IT!" : "P2 IS IT!";
+        Color itColor = (game->itIndex == 0) ? RED : BLUE;
+        DrawText(itText, 10, 58, 22, itColor);
+
+        if (game->tagCooldown > 0.0f) {
+            float frac = game->tagCooldown / TAG_COOLDOWN;
+            int barW = 120;
+            DrawRectangle(10, 86, barW, 6, (Color) { 0, 0, 0, 100 });
+            DrawRectangle(10, 86, (int)(barW * (1.0f - frac)), 6, ORANGE);
+        }
+
+        if (game->player.speedBoostTimer > 0.0f) {
+            DrawRectangle(10, 100, 40, 6, Fade((Color) { 255, 220, 60, 255 }, 0.85f));
+        }
+        else if (game->player.jumpBoostTimer > 0.0f) {
+            DrawRectangle(10, 100, 40, 6, Fade((Color) { 100, 220, 255, 255 }, 0.85f));
+        }
+        else if (game->player.shieldTimer > 0.0f) {
+            DrawRectangle(10, 100, 40, 6, Fade((Color) { 120, 255, 140, 255 }, 0.85f));
+        }
+
+        if (game->player2.speedBoostTimer > 0.0f) {
+            DrawRectangle(GetScreenWidth() - 50, 100, 40, 6,
+                Fade((Color) { 255, 220, 60, 255 }, 0.85f));
+        }
+        else if (game->player2.jumpBoostTimer > 0.0f) {
+            DrawRectangle(GetScreenWidth() - 50, 100, 40, 6,
+                Fade((Color) { 100, 220, 255, 255 }, 0.85f));
+        }
+        else if (game->player2.shieldTimer > 0.0f) {
+            DrawRectangle(GetScreenWidth() - 50, 100, 40, 6,
+                Fade((Color) { 120, 255, 140, 255 }, 0.85f));
+        }
+
+        if (game->tagFlashTimer > 0.0f) {
+            float a = (game->tagFlashTimer / 0.4f) * 0.35f;
+            DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(WHITE, a));
+        }
+
+        char timerText[16];
+        int secs = (int)ceilf(game->gameTimer);
+        if (secs < 0) secs = 0;
+        snprintf(timerText, sizeof(timerText), "%02d", secs);
+
+        int timerFontSize = 40;
+        int timerW = MeasureText(timerText, timerFontSize);
+        int timerX = GetScreenWidth() - timerW - 20;
+        int timerY = 15;
+
+        Color timerColor = WHITE;
+        if (game->gameTimer <= 5.0f) {
+            if ((int)(game->gameTimer * 4.0f) % 2 == 0) timerColor = RED;
+            else                                        timerColor = ORANGE;
+        }
+        DrawText(timerText, timerX, timerY, timerFontSize, timerColor);
+    }
+
+    if (game->gameTimedOut && game->explosionTimer > 1.2f) {
+        float fadeIn = (game->explosionTimer - 1.2f) / 1.0f;
+        if (fadeIn > 1.0f) fadeIn = 1.0f;
+
+        DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(),
+            Fade(BLACK, 0.7f * fadeIn));
+
+        const char* loserText = (game->itIndex == 0)
+            ? "P1 EXPLODED!"
+            : "P2 EXPLODED!";
+        Color loserColor = (game->itIndex == 0) ? RED : BLUE;
+        int lw = MeasureText(loserText, 48);
+        DrawText(loserText,
+            GetScreenWidth() / 2 - lw / 2,
+            GetScreenHeight() / 2 - 60, 48,
+            Fade(loserColor, fadeIn));
+
+        const char* winText = (game->itIndex == 0) ? "P2 WINS!" : "P1 WINS!";
+        Color winColor = (game->itIndex == 0) ? BLUE : RED;
+        int ww = MeasureText(winText, 60);
+        DrawText(winText,
+            GetScreenWidth() / 2 - ww / 2,
+            GetScreenHeight() / 2 + 10, 60,
+            Fade(winColor, fadeIn));
+
+        const char* backText = "ENTER for menu";
+        int btW = MeasureText(backText, 24);
+        DrawText(backText,
+            GetScreenWidth() / 2 - btW / 2,
+            GetScreenHeight() / 2 + 90, 24,
+            Fade(WHITE, fadeIn));
+    }
 }
 
 void CleanupGame(Game* game) {

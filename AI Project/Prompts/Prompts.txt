@@ -31,3 +31,66 @@ change the press R to restart button to orange and increase player jump height
 create 4 more levels
 Make all levels into one big level
 There is a world border in between, let player go from start all the way to end
+nop, still breaks and cannot progress much
+gib files with those chages
+remove the massiveness of the level in a horizontal. Instead make the level a huge square where the player starts at bottom left and paths their way to top left
+gimme new player.c file asw
+cleanupGame and DrawGame referecnced in main unresolved exteranls
+now only drawgame
+unresolved external drawlevel referenced in drawgame
+provide all files for game
+platforms should be low enough for plaer to jump on
+gib file
+player still can't reach platforms, lower the platforms
+platforms for each 'level' are still unreachable
+ok nvm I'll do level design. Remove all enemies and coins. Only player in bottom left and platform like these. world is only like 50 times bigger than player. make sure plyer can jump to higher up platforms
+remove the platforms towards the edge of the map, remove some random platforms in between, and add some slanted platforms lke in my diagram that the player can traverse and collide with
+make the slant rotated AABBs, and not bunch of smaller boxes.
+remove the uncollidable rectangles and fill in the rectangles you can collide
+ok nvm it's still very much bugged. Just go all the way back to horizontal platforms
+add a second player that can move via wasd (first player moves via arrow keys)
+make the camera zoom out to always include both players
+remove the final level end flag.
+add a very beautiful background
+make the background actually parallax and make the background look like very cool art
+The parallax shouldn't be dependant on player or camera, make it animate by itself
+Alright, starting to look good. remove random triangles in and increase opacity for clouds
+gib file
+make clouds even more opaque. Also, some streaks appear when moving camera. deal with it
+gib files
+U see the blue lines? remove that being drawn
+na the issue is still there but now it's worse, the place where players stand is gone
+try changing camera to zoom in/out in integer amounts and not fractions
+Spawn the players randomly in the level (but on a platform) and have a game timer of 30 seconds
+ok, revelation: this is a game of tag. Add the appropriate features
+no need of glow for it, just add a small white arrow above
+flip the arrow dawg. Have never seen an arrow pointing
+dawg where is the arrow now
+nvm just go back to the upside down arrow
+dawg this doesn't work asw.... MAKE SURE THE TRIANGLE SHOULD BE DRAWN IN ANTI-CLOCKWISE ORDER
+add a black outline on the white triangle
+Make the platforms look amazing, add details and stuff and all
+make the whole game even more beautiful, make beauty the main focus
+nvm go back it's so much worse
+now, we'll test each extra stuff and see if it's good. For now, JUST add aurora
+make the aurora more prominent
+add flowers to each platforms
+improve the players' model to look much more elegant
+only draws when jumpinng, make it draw otherwise
+there's a rogue red triangle tail on the players. remove that
+remove random platforms, compress the height, and make player jump little more
+whoever is it, should have little faster speed
+Imagine this is one map. Make 3 other maps of snow and jungle and time. Also a menu screen to selct maps
+on pressing R, take back to menu instead of restarting
+meadow and jungle are near identical. change meadow to be an acid trip
+The person who's it explodes when timer ends
+ADD lil particles when jumping and landing
+no particles when character standing still
+add a slight camera shake when tag changes
+add collectibles which could increase speed or increase jump amount, etc. Also add particles effects for these
+only one powerup at a time. write what each powerup do in the menu screen
+bring the menu powerup text towards bottom of screen (with some margin from bottommost)
+gimme the file that changed
+add small glow to player that correpsonds to their powerup if any.
+fill the ground
+Thank U my G. U da best

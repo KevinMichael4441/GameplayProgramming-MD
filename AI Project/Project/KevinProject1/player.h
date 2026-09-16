@@ -4,6 +4,9 @@
 #include "raylib.h"
 #include "level.h"
 
+#define PLAYER_BASE_SPEED  200.0f
+#define PLAYER_BASE_JUMP  -640.0f
+
 typedef enum InputMode {
     INPUT_ARROWS = 0,
     INPUT_WASD
@@ -20,6 +23,14 @@ typedef struct Player {
     float gravity;
     Color color;
     InputMode input;
+
+    bool jumpedThisFrame;
+    bool landedThisFrame;
+    float landImpact;
+
+    float speedBoostTimer;
+    float jumpBoostTimer;
+    float shieldTimer;
 } Player;
 
 void InitPlayer(Player* player, float x, float y, InputMode input, Color color);
