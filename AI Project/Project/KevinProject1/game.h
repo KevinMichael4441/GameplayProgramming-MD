@@ -7,6 +7,7 @@
 
 #define MAX_PARTICLES 128
 #define MAX_POWERUPS  1
+#define MAX_DEBRIS    24
 
 typedef enum Scene {
     SCENE_MENU = 0,
@@ -23,6 +24,18 @@ typedef struct Particle {
     Color   color;
     bool    active;
 } Particle;
+
+typedef struct Debris {
+    Vector2 position;
+    Vector2 velocity;
+    float   life;
+    float   maxLife;
+    float   rotation;
+    float   spin;
+    float   size;
+    Color   color;
+    bool    active;
+} Debris;
 
 typedef enum PowerupKind {
     POWERUP_SPEED = 0,
@@ -67,6 +80,16 @@ typedef struct Game {
     Vector2 explosionPos;
     float   explosionTimer;
     bool    exploding;
+
+    // Explosion extras
+    float   explosionShakeTimer;
+    float   explosionZoomKick;
+    float   timeScale;
+    bool    chromaticFlash;
+    Vector2 scorchPos;
+    float   scorchTimer;
+    bool    scorchActive;
+    Debris  debris[MAX_DEBRIS];
 
     Particle particles[MAX_PARTICLES];
     Powerup  powerups[MAX_POWERUPS];

@@ -94,3 +94,4 @@ gimme the file that changed
 add small glow to player that correpsonds to their powerup if any.
 fill the ground
 Thank U my G. U da best
+make the death explosion so much more cooler and impactful

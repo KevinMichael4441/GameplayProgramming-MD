@@ -218,30 +218,24 @@ static void DrawPowerups(Game* game) {
     }
 }
 
-// Soft aura behind a player, tinted to whichever power-up they have active.
-// Draws nothing if no buff is active.
 static void DrawPlayerGlow(Player* p) {
     Color glow = WHITE;
     bool  active = false;
     float timer = 0.0f;
-    float maxTimer = 1.0f;
 
     if (p->speedBoostTimer > 0.0f) {
         glow = (Color){ 255, 220,  60, 255 };
         timer = p->speedBoostTimer;
-        maxTimer = 5.0f;
         active = true;
     }
     else if (p->jumpBoostTimer > 0.0f) {
         glow = (Color){ 100, 220, 255, 255 };
         timer = p->jumpBoostTimer;
-        maxTimer = 5.0f;
         active = true;
     }
     else if (p->shieldTimer > 0.0f) {
         glow = (Color){ 120, 255, 140, 255 };
         timer = p->shieldTimer;
-        maxTimer = 4.0f;
         active = true;
     }
 
@@ -252,10 +246,7 @@ static void DrawPlayerGlow(Player* p) {
         p->position.y + p->rec.height * 0.5f
     };
 
-    // Fade out over the last ~1.2s of the buff
     float tail = (timer < 1.2f) ? (timer / 1.2f) : 1.0f;
-
-    // Gentle breathing pulse
     float pulse = 1.0f + sinf((float)GetTime() * 6.0f) * 0.06f;
     float baseR = 22.0f * pulse;
 
@@ -273,6 +264,10 @@ static void ClearPowerups(Game* game) {
         game->powerups[i].active = false;
         game->powerups[i].respawnTimer = 0.0f;
     }
+}
+
+static void ClearDebris(Game* game) {
+    for (int i = 0; i < MAX_DEBRIS; i++) game->debris[i].active = false;
 }
 
 static void StartMatch(Game* game, MapTheme theme) {
@@ -311,6 +306,14 @@ static void StartMatch(Game* game, MapTheme theme) {
     game->exploding = false;
     game->explosionTimer = 0.0f;
     game->explosionPos = (Vector2){ 0, 0 };
+    game->explosionShakeTimer = 0.0f;
+    game->explosionZoomKick = 0.0f;
+    game->timeScale = 1.0f;
+    game->chromaticFlash = false;
+    game->scorchTimer = 0.0f;
+    game->scorchActive = false;
+    game->scorchPos = (Vector2){ 0, 0 };
+    ClearDebris(game);
 
     ClearParticles(game);
     SeedPowerups(game);
@@ -349,6 +352,14 @@ void InitGame(Game* game) {
     game->exploding = false;
     game->explosionTimer = 0.0f;
     game->explosionPos = (Vector2){ 0, 0 };
+    game->explosionShakeTimer = 0.0f;
+    game->explosionZoomKick = 0.0f;
+    game->timeScale = 1.0f;
+    game->chromaticFlash = false;
+    game->scorchTimer = 0.0f;
+    game->scorchActive = false;
+    game->scorchPos = (Vector2){ 0, 0 };
+    ClearDebris(game);
 
     ClearParticles(game);
     ClearPowerups(game);
@@ -384,8 +395,14 @@ void UpdateGame(Game* game, float deltaTime) {
         game->menuSelection = 0;
         game->exploding = false;
         game->explosionTimer = 0.0f;
+        game->timeScale = 1.0f;
+        game->scorchActive = false;
+        game->scorchTimer = 0.0f;
+        game->explosionShakeTimer = 0.0f;
+        game->explosionZoomKick = 0.0f;
         ClearParticles(game);
         ClearPowerups(game);
+        ClearDebris(game);
         return;
     }
 
@@ -432,6 +449,21 @@ void UpdateGame(Game* game, float deltaTime) {
         UpdateParticles(game, deltaTime);
         UpdatePowerups(game, deltaTime);
 
+        // Pre-explosion dust during the last 3 seconds
+        if (game->gameTimer < 3.0f && game->gameTimer > 0.0f) {
+            Player* tagger = (game->itIndex == 0) ? &game->player : &game->player2;
+            if (GetRandomValue(0, 4) == 0) {
+                Vector2 foot = {
+                    tagger->position.x + tagger->rec.width * 0.5f,
+                    tagger->position.y + tagger->rec.height
+                };
+                SpawnDust(game, foot, 2, 12.0f, -60.0f,
+                    (Color) {
+                    200, 180, 150, 220
+                });
+            }
+        }
+
         if (game->tagCooldown > 0.0f) {
             game->tagCooldown -= deltaTime;
             if (game->tagCooldown < 0.0f) game->tagCooldown = 0.0f;
@@ -470,6 +502,35 @@ void UpdateGame(Game* game, float deltaTime) {
             };
             game->explosionTimer = 0.0f;
             game->exploding = true;
+
+            game->explosionShakeTimer = 1.5f;
+            game->explosionZoomKick = 0.35f;
+            game->chromaticFlash = true;
+
+            for (int i = 0; i < MAX_DEBRIS; i++) {
+                game->debris[i].active = true;
+                game->debris[i].position = game->explosionPos;
+
+                float ang = (float)i / (float)MAX_DEBRIS * 2.0f * PI
+                    + ((float)GetRandomValue(-30, 30) / 100.0f);
+
+                float speed = 200.0f + (float)GetRandomValue(0, 300);
+                game->debris[i].velocity = (Vector2){
+                    cosf(ang) * speed,
+                    sinf(ang) * speed - 120.0f
+                };
+
+                game->debris[i].maxLife = 1.6f + (float)GetRandomValue(0, 80) / 100.0f;
+                game->debris[i].life = game->debris[i].maxLife;
+                game->debris[i].rotation = (float)GetRandomValue(0, 360);
+                game->debris[i].spin = (float)GetRandomValue(-720, 720);
+                game->debris[i].size = 3.0f + (float)GetRandomValue(0, 4);
+
+                int pal = GetRandomValue(0, 2);
+                game->debris[i].color = (pal == 0) ? (Color) { 255, 200, 100, 255 }
+                : (pal == 1) ? (Color) { 255, 120, 40, 255 }
+                : (Color) { 200, 60, 30, 255 };
+            }
         }
 
         const float margin = 120.0f;
@@ -509,6 +570,7 @@ void UpdateGame(Game* game, float deltaTime) {
         }
         else camY = game->level.worldHeight * 0.5f;
 
+        // Tag shake
         if (game->cameraShakeTimer > 0.0f) {
             float strength = game->cameraShakeTimer / 0.25f;
             float amp = game->cameraShake * strength;
@@ -517,26 +579,119 @@ void UpdateGame(Game* game, float deltaTime) {
             camY += cosf(t * 2.3f) * amp;
         }
 
+        // Pre-explosion rumble (last 3 seconds)
+        if (game->gameTimer < 3.0f && game->gameTimer > 0.0f) {
+            float p = 1.0f - (game->gameTimer / 3.0f);
+            float amp = 6.0f * p;
+            float t = (float)GetTime() * 70.0f;
+            camX += sinf(t * 5.1f) * amp;
+            camY += cosf(t * 6.3f) * amp;
+        }
+
+        // Explosion shake (fires when the timer runs out — same frame)
+        if (game->explosionShakeTimer > 0.0f) {
+            float s = game->explosionShakeTimer / 1.5f;
+            float amp = 30.0f * s * s;
+
+            float t = (float)GetTime() * 55.0f;
+            camX += sinf(t * 2.1f) * amp;
+            camY += cosf(t * 2.7f) * amp;
+
+            float t2 = (float)GetTime() * 160.0f;
+            camX += sinf(t2 * 3.3f) * amp * 0.45f;
+            camY += cosf(t2 * 4.1f) * amp * 0.45f;
+
+            if (game->explosionShakeTimer > 1.3f) {
+                float microAmp = (game->explosionShakeTimer - 1.3f) * 50.0f;
+                camX += (float)GetRandomValue(-100, 100) / 100.0f * microAmp;
+                camY += (float)GetRandomValue(-100, 100) / 100.0f * microAmp;
+            }
+
+            if (game->explosionZoomKick > 0.0f) {
+                float zoomPhase = game->explosionZoomKick * 6.0f;
+                float zoomAmount = sinf(zoomPhase) * game->explosionZoomKick * 0.06f;
+                game->camera.zoom = game->camera.zoom * (1.0f + zoomAmount);
+            }
+        }
+
         game->camera.target = (Vector2){ camX, camY };
         return;
     }
 
+    // End scene
     if (game->scene == SCENE_END || game->gameOver) {
-        UpdateParticles(game, deltaTime);
+        if (game->exploding && game->explosionTimer < 0.3f) {
+            game->timeScale = 0.25f;
+        }
+        else {
+            game->timeScale += (1.0f - game->timeScale) * fminf(1.0f, deltaTime * 3.0f);
+            if (game->timeScale > 0.98f) game->timeScale = 1.0f;
+        }
+
+        float scaledDt = deltaTime * game->timeScale;
+
+        UpdateParticles(game, scaledDt);
 
         if (game->exploding) {
-            game->explosionTimer += deltaTime;
+            game->explosionTimer += scaledDt;
             if (game->explosionTimer > 2.5f) game->exploding = false;
         }
+
+        if (game->explosionShakeTimer > 0.0f) {
+            game->explosionShakeTimer -= deltaTime;
+            if (game->explosionShakeTimer < 0.0f) game->explosionShakeTimer = 0.0f;
+        }
+
+        if (game->explosionZoomKick > 0.0f) {
+            game->explosionZoomKick -= deltaTime * 1.6f;
+            if (game->explosionZoomKick < 0.0f) game->explosionZoomKick = 0.0f;
+        }
+
+        if (game->chromaticFlash && game->explosionTimer > 0.12f) {
+            game->chromaticFlash = false;
+        }
+
+        for (int i = 0; i < MAX_DEBRIS; i++) {
+            if (!game->debris[i].active) continue;
+            game->debris[i].life -= scaledDt;
+            if (game->debris[i].life <= 0.0f) { game->debris[i].active = false; continue; }
+
+            game->debris[i].velocity.y += 900.0f * scaledDt;
+            game->debris[i].velocity.x *= 1.0f - 0.6f * scaledDt;
+            game->debris[i].position.x += game->debris[i].velocity.x * scaledDt;
+            game->debris[i].position.y += game->debris[i].velocity.y * scaledDt;
+            game->debris[i].rotation += game->debris[i].spin * scaledDt;
+        }
+
+        if (game->exploding && game->explosionTimer > 0.4f && !game->scorchActive) {
+            game->scorchActive = true;
+            game->scorchPos = game->explosionPos;
+            game->scorchTimer = 1.0f;
+        }
+        if (game->scorchActive) {
+            game->scorchTimer -= deltaTime / 6.0f;
+            if (game->scorchTimer < 0.0f) {
+                game->scorchTimer = 0.0f;
+                game->scorchActive = false;
+            }
+        }
+
         if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE)) {
             game->scene = SCENE_MENU;
             game->gameOver = false;
             game->gameTimedOut = false;
             game->exploding = false;
             game->explosionTimer = 0.0f;
+            game->timeScale = 1.0f;
+            game->scorchActive = false;
+            game->scorchTimer = 0.0f;
+            game->explosionShakeTimer = 0.0f;
+            game->explosionZoomKick = 0.0f;
             ClearParticles(game);
             ClearPowerups(game);
+            ClearDebris(game);
         }
+        return;
     }
 }
 
@@ -620,82 +775,152 @@ static void DrawItArrowWorld(Player* p, Camera2D* camera) {
 
 static void DrawExplosion(Game* game) {
     if (game->explosionTimer == 0.0f && !game->exploding) return;
-    if (game->explosionTimer > 2.5f) return;
+    if (game->explosionTimer > 2.5f && !game->scorchActive) return;
 
     float t = game->explosionTimer;
     Vector2 pos = game->explosionPos;
 
-    if (t < 0.15f) {
-        float a = 1.0f - (t / 0.15f);
-        DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(),
-            Fade(WHITE, a * 0.9f));
+    if (game->scorchActive) {
+        unsigned char a = (unsigned char)(140 * game->scorchTimer);
+        float r = 40.0f + (1.0f - game->scorchTimer) * 20.0f;
+        DrawEllipse((int)game->scorchPos.x,
+            (int)(game->scorchPos.y + 14.0f),
+            r, r * 0.35f,
+            (Color) {
+            20, 10, 5, a
+        });
+        DrawEllipse((int)game->scorchPos.x,
+            (int)(game->scorchPos.y + 14.0f),
+            r * 0.65f, r * 0.22f,
+            (Color) {
+            40, 20, 10, a
+        });
     }
 
-    if (t < 0.4f) {
-        float p = t / 0.4f;
-        float r = 20.0f + p * 120.0f;
-        unsigned char a = (unsigned char)(255 * (1.0f - p));
+    if (!game->exploding && t > 2.5f) return;
 
-        DrawCircleV(pos, r * 1.00f, (Color) { 255, 100, 30, a });
-        DrawCircleV(pos, r * 0.75f, (Color) { 255, 180, 60, a });
-        DrawCircleV(pos, r * 0.45f, (Color) { 255, 240, 180, a });
-        DrawCircleV(pos, r * 0.20f, (Color) { 255, 255, 255, a });
-    }
-
-    if (t > 0.05f && t < 1.0f) {
-        float p = (t - 0.05f) / 0.95f;
-        float r = 30.0f + p * 260.0f;
+    if (t > 0.02f && t < 0.55f) {
+        float p = (t - 0.02f) / 0.53f;
+        float len = 120.0f + p * 380.0f;
         unsigned char a = (unsigned char)(220 * (1.0f - p));
 
-        DrawCircleLines((int)pos.x, (int)pos.y, r, (Color) { 255, 200, 120, a });
-        DrawCircleLines((int)pos.x, (int)pos.y, r + 3.0f, (Color) { 255, 160, 80, (unsigned char)(a * 0.7f) });
-        DrawCircleLines((int)pos.x, (int)pos.y, r + 6.0f, (Color) { 255, 120, 60, (unsigned char)(a * 0.4f) });
+        int rayCount = 14;
+        for (int i = 0; i < rayCount; i++) {
+            float ang = (float)i / (float)rayCount * 2.0f * PI;
+            ang += sinf((float)i * 2.3f) * 0.1f;
+
+            Vector2 baseL = { pos.x + cosf(ang - 0.08f) * 20.0f,
+                              pos.y + sinf(ang - 0.08f) * 20.0f };
+            Vector2 baseR = { pos.x + cosf(ang + 0.08f) * 20.0f,
+                              pos.y + sinf(ang + 0.08f) * 20.0f };
+            Vector2 tip = { pos.x + cosf(ang) * len,
+                              pos.y + sinf(ang) * len };
+
+            DrawTriangle(baseL, baseR, tip,
+                Fade((Color) { 255, 220, 140, 255 }, a * 0.55f));
+        }
     }
 
-    if (t < 1.5f) {
-        const int N = 32;
+    if (t < 0.55f) {
+        float p = t / 0.55f;
+        float r = 30.0f + p * 180.0f;
+        unsigned char a = (unsigned char)(255 * (1.0f - p));
+
+        DrawCircleV(pos, r * 1.10f, (Color) { 255, 80, 30, (unsigned char)(a * 0.9f) });
+        DrawCircleV(pos, r * 0.90f, (Color) { 255, 130, 50, a });
+        DrawCircleV(pos, r * 0.65f, (Color) { 255, 190, 80, a });
+        DrawCircleV(pos, r * 0.42f, (Color) { 255, 235, 160, a });
+        DrawCircleV(pos, r * 0.20f, (Color) { 255, 255, 240, a });
+    }
+
+    if (t > 0.03f && t < 1.2f) {
+        float p = (t - 0.03f) / 1.17f;
+        float r = 30.0f + p * 420.0f;
+        unsigned char a = (unsigned char)(240 * (1.0f - p));
+
+        DrawRing(pos, r, r + 3.0f, 0, 360, 64,
+            (Color) {
+            255, 255, 240, a
+        });
+        DrawRing(pos, r + 6.0f, r + 11.0f, 0, 360, 64,
+            (Color) {
+            255, 210, 120, (unsigned char)(a * 0.7f)
+        });
+        DrawRing(pos, r + 14.0f, r + 22.0f, 0, 360, 64,
+            (Color) {
+            255, 140, 60, (unsigned char)(a * 0.4f)
+        });
+    }
+
+    for (int i = 0; i < MAX_DEBRIS; i++) {
+        if (!game->debris[i].active) continue;
+        float lifeFrac = game->debris[i].life / game->debris[i].maxLife;
+        if (lifeFrac < 0.0f) lifeFrac = 0.0f;
+
+        unsigned char a = (unsigned char)(255 * lifeFrac);
+
+        Color c = game->debris[i].color;
+        if (lifeFrac < 0.4f) {
+            c = (Color){ 80, 40, 30, a };
+        }
+        else {
+            c.a = a;
+        }
+
+        float sz = game->debris[i].size * (0.5f + lifeFrac * 0.5f);
+
+        Rectangle dr = {
+            game->debris[i].position.x - sz * 0.5f,
+            game->debris[i].position.y - sz * 0.5f,
+            sz, sz
+        };
+        Vector2 origin = { sz * 0.5f, sz * 0.5f };
+        DrawRectanglePro(dr, origin, game->debris[i].rotation, c);
+    }
+
+    if (t > 0.25f && t < 2.2f) {
+        float p = (t - 0.25f) / 1.95f;
+        const int SMOKE = 12;
+        for (int i = 0; i < SMOKE; i++) {
+            float ang = (float)i / (float)SMOKE * 2.0f * PI + p * 0.8f;
+            float dist = 25.0f + p * 130.0f;
+            float px = pos.x + cosf(ang) * dist;
+            float py = pos.y + sinf(ang) * dist - p * 40.0f;
+
+            float r = 22.0f + p * 36.0f;
+            unsigned char a = (unsigned char)(110 * (1.0f - p));
+
+            DrawCircleV((Vector2) { px, py }, r, (Color) { 45, 40, 55, a });
+            DrawCircleV((Vector2) { px, py }, r * 0.7f, (Color) { 75, 70, 90, (unsigned char)(a * 0.9f) });
+        }
+    }
+
+    if (t < 1.0f) {
+        int N = 48;
         for (int i = 0; i < N; i++) {
             float ang = (float)i / (float)N * 2.0f * PI;
-            float speed = 180.0f + ((i * 37) % 100) * 1.2f;
-            ang += sinf((float)i * 12.9898f) * 0.15f;
+            float speed = 400.0f + ((i * 73) % 250) * 2.0f;
+            ang += sinf((float)i * 7.77f) * 0.25f;
 
             float dist = speed * t;
-            float life = 1.0f - (t / 1.5f);
+            float life = 1.0f - (t / 1.0f);
             if (life < 0.0f) life = 0.0f;
 
             float px = pos.x + cosf(ang) * dist;
             float py = pos.y + sinf(ang) * dist;
-            py += 120.0f * t * t;
+            py += 260.0f * t * t;
 
             unsigned char a = (unsigned char)(255 * life);
 
-            if (i % 3 == 0) {
-                DrawCircleV((Vector2) { px, py }, 5.0f, (Color) { 255, 220, 100, a });
-                DrawCircleV((Vector2) { px, py }, 3.0f, (Color) { 255, 255, 220, a });
-            }
-            else if (i % 3 == 1) {
-                DrawCircleV((Vector2) { px, py }, 4.0f, (Color) { 255, 140, 50, a });
-            }
-            else {
-                DrawCircleV((Vector2) { px, py }, 3.0f, (Color) { 255, 90, 30, a });
-            }
-        }
-    }
+            float pxPrev = pos.x + cosf(ang) * dist * 0.92f;
+            float pyPrev = pos.y + sinf(ang) * dist * 0.92f + 260.0f * t * t * 0.92f;
 
-    if (t > 0.3f && t < 2.0f) {
-        float p = (t - 0.3f) / 1.7f;
-        const int SMOKE = 8;
-        for (int i = 0; i < SMOKE; i++) {
-            float ang = (float)i / (float)SMOKE * 2.0f * PI;
-            float dist = 30.0f + p * 80.0f;
-            float px = pos.x + cosf(ang) * dist;
-            float py = pos.y + sinf(ang) * dist - p * 30.0f;
-
-            float r = 18.0f + p * 24.0f;
-            unsigned char a = (unsigned char)(120 * (1.0f - p));
-
-            DrawCircleV((Vector2) { px, py }, r, (Color) { 60, 60, 70, a });
-            DrawCircleV((Vector2) { px, py }, r * 0.7f, (Color) { 100, 100, 110, a });
+            DrawLineEx((Vector2) { pxPrev, pyPrev }, (Vector2) { px, py },
+                2.0f, (Color) { 255, 220, 120, a });
+            DrawCircleV((Vector2) { px, py }, 1.8f,
+                (Color) {
+                255, 255, 220, a
+            });
         }
     }
 }
@@ -762,7 +987,6 @@ static void DrawMenu(Game* game) {
         180, 180, 200, 255
     });
 
-    // ---- Power-up legend, anchored to bottom ----
     const int bottomMargin = 40;
 
     const char* note = "Only one power-up can be active at a time";
@@ -867,14 +1091,12 @@ void DrawGame(Game* game) {
         DrawPlayer(runner);
     }
     else {
-        // Glow behind each player (before their sprite)
         DrawPlayerGlow(&game->player);
         DrawPlayerGlow(&game->player2);
 
         DrawPlayer(&game->player);
         DrawPlayer(&game->player2);
 
-        // Shield rings (on top)
         if (game->player.shieldTimer > 0.0f) {
             Vector2 c = { game->player.position.x + game->player.rec.width * 0.5f,
                           game->player.position.y + game->player.rec.height * 0.5f };
@@ -894,11 +1116,64 @@ void DrawGame(Game* game) {
     DrawParticles(game);
     DrawLevelForeground(&game->level, &game->camera);
 
-    if (game->exploding) {
+    if (game->exploding || game->scorchActive) {
         DrawExplosion(game);
     }
 
     EndMode2D();
+
+    // Rumble vignette
+    if (game->explosionShakeTimer > 0.0f) {
+        float s = game->explosionShakeTimer / 1.5f;
+        unsigned char a = (unsigned char)(110 * s);
+        int W = GetScreenWidth();
+        int H = GetScreenHeight();
+        int band = 40;
+
+        DrawRectangleGradientV(0, 0, W, band,
+            (Color) {
+            0, 0, 0, a
+        },
+            (Color) {
+            0, 0, 0, 0
+        });
+        DrawRectangleGradientV(0, H - band, W, band,
+            (Color) {
+            0, 0, 0, 0
+        },
+            (Color) {
+            0, 0, 0, a
+        });
+        DrawRectangleGradientH(0, 0, band, H,
+            (Color) {
+            0, 0, 0, a
+        },
+            (Color) {
+            0, 0, 0, 0
+        });
+        DrawRectangleGradientH(W - band, 0, band, H,
+            (Color) {
+            0, 0, 0, 0
+        },
+            (Color) {
+            0, 0, 0, a
+        });
+    }
+
+    // Chromatic flash
+    if (game->chromaticFlash) {
+        float t = game->explosionTimer;
+        float a = 1.0f - (t / 0.12f);
+        if (a > 1.0f) a = 1.0f;
+        if (a > 0.0f) {
+            DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(),
+                Fade((Color) { 255, 60, 60, 255 }, a * 0.35f));
+            DrawRectangle(6, 0, GetScreenWidth(), GetScreenHeight(),
+                Fade((Color) { 60, 60, 255, 255 }, a * 0.25f));
+            DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(),
+                Fade(WHITE, a * 0.9f));
+        }
+    }
 
     if (game->scene == SCENE_PLAY && !game->gameTimedOut) {
         Player* tagger = (game->itIndex == 0) ? &game->player : &game->player2;
